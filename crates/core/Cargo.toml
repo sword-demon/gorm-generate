@@ -1,0 +1,6 @@
+[package]
+name = "gorm-generate-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

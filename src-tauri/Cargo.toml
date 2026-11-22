@@ -1,0 +1,11 @@
+[package]
+name = "gorm-generate"
+version.workspace = true
+edition.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+tauri = { version = "2.12", features = [] }
+gorm-generate-core = { path = "../crates/core" }
