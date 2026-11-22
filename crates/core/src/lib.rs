@@ -4,6 +4,7 @@
 //! stays testable without a webview.
 
 pub mod generate;
+pub mod layers;
 pub mod naming;
 pub mod parser;
 pub mod types;

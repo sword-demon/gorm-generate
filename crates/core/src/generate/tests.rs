@@ -65,10 +65,14 @@ fn maps_column_types_to_go_types() {
 
 #[test]
 fn unknown_type_maps_to_any_with_warning() {
-    let ddl = "CREATE TABLE `t` (`x` WEIRDTYPE NOT NULL);";
+    let ddl = "CREATE TABLE `t` (`id` BIGINT NOT NULL, `x` WEIRDTYPE NOT NULL, PRIMARY KEY (`id`));";
     let result = generate(&request(ddl)).expect("should generate");
     assert!(result.files[0].content.contains("X any"));
-    assert_eq!(result.warnings.len(), 1, "one warning for unknown type");
+    assert!(
+        result.warnings.iter().any(|w| w.contains("weirdtype")),
+        "warning for unknown type, got: {:?}",
+        result.warnings
+    );
 }
 
 #[test]
@@ -107,8 +111,13 @@ fn multiple_tables_generate_separate_files() {
         CREATE TABLE `orders` (`id` BIGINT NOT NULL, PRIMARY KEY (`id`));";
     let result = generate(&request(ddl)).expect("should generate");
     assert_eq!(result.tables, vec!["users", "orders"]);
+    // Model + repo + service per table.
+    assert_eq!(result.files.len(), 6);
     let paths: Vec<_> = result.files.iter().map(|f| f.path.as_str()).collect();
-    assert_eq!(paths, vec!["internal/model/user.go", "internal/model/order.go"]);
+    assert!(paths.contains(&"internal/model/user.go"));
+    assert!(paths.contains(&"internal/model/order.go"));
+    assert!(paths.contains(&"internal/repository/order_repo.go"));
+    assert!(paths.contains(&"internal/service/order_service.go"));
 }
 
 #[test]
@@ -156,6 +165,80 @@ fn ignored_statements_are_counted_into_warnings() {
 }
 
 #[test]
+fn single_pk_table_generates_repository_and_service() {
+    let ddl = "CREATE TABLE `users` (`id` BIGINT NOT NULL AUTO_INCREMENT, \
+        `n` VARCHAR(10) NOT NULL, PRIMARY KEY (`id`));";
+    let result = generate(&request(ddl)).expect("should generate");
+
+    let paths: Vec<_> = result.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        vec![
+            "internal/model/user.go",
+            "internal/repository/user_repo.go",
+            "internal/service/user_service.go",
+        ]
+    );
+
+    let repo = &result.files.iter().find(|f| f.path.ends_with("user_repo.go")).unwrap().content;
+    assert!(repo.contains("type UserRepository interface {"), "repo interface");
+    assert!(repo.contains("Create(ctx context.Context, m *User) error"));
+    assert!(repo.contains("GetByID(ctx context.Context, id int64) (*User, error)"));
+    assert!(repo.contains("List(ctx context.Context, page int, pageSize int) ([]*User, int64, error)"));
+    assert!(repo.contains("Update(ctx context.Context, m *User) error"));
+    assert!(repo.contains("Delete(ctx context.Context, id int64) error"));
+    assert!(repo.contains("type userRepository struct"), "repo impl");
+    assert!(repo.contains("func NewUserRepository(db *gorm.DB) UserRepository"), "repo constructor");
+    assert!(repo.contains("Where(\"id = ?\", id).First(&m)"), "Where binds PK args");
+    assert!(repo.contains("Where(\"id = ?\", id).Delete(&User{})"), "Delete binds PK args");
+
+    let svc = &result.files.iter().find(|f| f.path.ends_with("user_service.go")).unwrap().content;
+    assert!(svc.contains("type UserService interface {"), "service interface");
+    assert!(svc.contains("func NewUserService(repo repository.UserRepository) UserService"), "service constructor injects repo interface");
+    assert!(svc.contains("return s.repo.GetByID(ctx, id)"), "thin passthrough, got: {svc}");
+    assert!(svc.contains("import (\n\t\"context\"\n\n\t\"github.com/example/app/internal/model\"\n\t\"github.com/example/app/internal/repository\"\n)"), "service imports model too");
+}
+
+#[test]
+fn composite_pk_generates_multi_param_methods() {
+    let ddl = "CREATE TABLE `order_items` (`order_id` BIGINT NOT NULL, \
+        `item_id` BIGINT NOT NULL, PRIMARY KEY (`order_id`, `item_id`));";
+    let result = generate(&request(ddl)).expect("should generate");
+    let repo = &result.files.iter().find(|f| f.path.ends_with("order_item_repo.go")).unwrap().content;
+    assert!(
+        repo.contains("GetByID(ctx context.Context, orderId int64, itemId int64) (*OrderItem, error)"),
+        "multi-param GetByID, got: {repo}"
+    );
+    assert!(
+        repo.contains("Delete(ctx context.Context, orderId int64, itemId int64) error"),
+        "multi-param Delete"
+    );
+}
+
+#[test]
+fn no_pk_table_generates_model_only_with_warning() {
+    let ddl = "CREATE TABLE `logs` (`msg` VARCHAR(200) NOT NULL);";
+    let result = generate(&request(ddl)).expect("should generate");
+    let paths: Vec<_> = result.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, vec!["internal/model/log.go"], "model only");
+    assert!(
+        result.warnings.iter().any(|w| w.contains("logs") && w.contains("primary key")),
+        "warning about missing primary key, got: {:?}",
+        result.warnings
+    );
+}
+
+#[test]
+fn module_path_is_used_in_imports() {
+    let ddl = "CREATE TABLE `users` (`id` BIGINT NOT NULL, PRIMARY KEY (`id`));";
+    let result = generate(&request(ddl)).expect("should generate");
+    let repo = &result.files.iter().find(|f| f.path.ends_with("user_repo.go")).unwrap().content;
+    assert!(repo.contains("\"github.com/example/app/internal/model\""), "repo imports model via module path");
+    let svc = &result.files.iter().find(|f| f.path.ends_with("user_service.go")).unwrap().content;
+    assert!(svc.contains("\"github.com/example/app/internal/repository\""), "service imports repo via module path");
+}
+
+#[test]
 fn multiline_comment_is_flattened_into_one_line() {
     let ddl = "CREATE TABLE `t` (`x` INT NOT NULL COMMENT 'line1\nline2');";
     let result = generate(&request(ddl)).expect("should generate");
@@ -178,6 +261,50 @@ fn generation_is_idempotent() {
     );
 }
 
+#[test]
+fn golden_composite_pk_ddl_is_locked() {
+    let ddl = include_str!("../fixtures/composite_pk_ddl.sql");
+    let result = generate(&request(ddl)).expect("composite DDL should parse");
+    let actual: Vec<(&str, &str)> = result
+        .files
+        .iter()
+        .map(|f| (f.path.as_str(), f.content.as_str()))
+        .collect();
+    let golden: Vec<(&str, &str)> = GOLDEN_COMPOSITE.iter().copied().collect();
+    assert_eq!(actual, golden, "composite-PK golden output changed");
+}
+
+#[test]
+fn golden_no_pk_ddl_is_locked() {
+    let ddl = include_str!("../fixtures/no_pk_ddl.sql");
+    let result = generate(&request(ddl)).expect("no-PK DDL should parse");
+    let actual: Vec<(&str, &str)> = result
+        .files
+        .iter()
+        .map(|f| (f.path.as_str(), f.content.as_str()))
+        .collect();
+    let golden: Vec<(&str, &str)> = GOLDEN_NO_PK.iter().copied().collect();
+    assert_eq!(actual, golden, "no-PK golden output changed");
+    assert!(
+        result.warnings.iter().any(|w| w.contains("logs") && w.contains("no primary key")),
+        "no-PK warning present"
+    );
+}
+
 /// Expected golden output, paired by path. Kept inline so a mismatch prints
 /// the exact file content diff.
-const GOLDEN: &[(&str, &str)] = &[("internal/model/user.go", include_str!("../fixtures/golden_user_model.go"))];
+const GOLDEN: &[(&str, &str)] = &[
+    ("internal/model/user.go", include_str!("../fixtures/golden_user.txt")),
+    ("internal/repository/user_repo.go", include_str!("../fixtures/golden_user_repo.txt")),
+    ("internal/service/user_service.go", include_str!("../fixtures/golden_user_service.txt")),
+];
+
+const GOLDEN_COMPOSITE: &[(&str, &str)] = &[
+    ("internal/model/order_item.go", include_str!("../fixtures/golden_order_item.txt")),
+    ("internal/repository/order_item_repo.go", include_str!("../fixtures/golden_order_item_repo.txt")),
+    ("internal/service/order_item_service.go", include_str!("../fixtures/golden_order_item_service.txt")),
+];
+
+const GOLDEN_NO_PK: &[(&str, &str)] = &[
+    ("internal/model/log.go", include_str!("../fixtures/golden_log.txt")),
+];

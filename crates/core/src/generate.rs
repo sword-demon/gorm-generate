@@ -1,5 +1,6 @@
 //! `generate(request) -> GeneratedProject`: the pure generation seam.
 
+use crate::layers;
 use crate::naming::{field_name, snake_case, struct_name};
 use crate::parser::{self, classify_mysql_type, is_auto_increment};
 use crate::types::map_type;
@@ -60,6 +61,18 @@ pub fn generate(request: &GenerateRequest) -> Result<GeneratedProject, ParseErro
         warnings.extend(table_warnings);
         table_names.push(table.name.clone());
         files.push(file);
+
+        // Spec: tables without a primary key only get a model, plus a
+        // warning; repo/service/cache are not generated for them.
+        if table.primary_key.is_empty() {
+            warnings.push(format!(
+                "table `{}` has no primary key; only the model was generated",
+                table.name
+            ));
+            continue;
+        }
+        files.push(layers::render_repository(table, request));
+        files.push(layers::render_service(table, request));
     }
 
     if script.ignored_count > 0 {
