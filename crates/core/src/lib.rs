@@ -3,6 +3,13 @@
 //! Parsing and code generation live here, independent of Tauri, so the core
 //! stays testable without a webview.
 
+pub mod generate;
+pub mod naming;
+pub mod parser;
+pub mod types;
+
+pub use generate::{generate, GeneratedFile, GeneratedProject, GenerateRequest, ParseError};
+
 /// Liveness probe used to verify the IPC path in the scaffold.
 pub fn ping() -> String {
     "pong from core".to_string()

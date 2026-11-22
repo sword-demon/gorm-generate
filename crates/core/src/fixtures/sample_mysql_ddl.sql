@@ -1,0 +1,14 @@
+CREATE TABLE `users` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `username` VARCHAR(64) NOT NULL,
+  `email` VARCHAR(128) NOT NULL,
+  `age` TINYINT(1) NULL,
+  `balance` DECIMAL(12,2) NOT NULL,
+  `avatar_url` VARCHAR(255) NULL,
+  `status` TINYINT NOT NULL DEFAULT 1,
+  `settings` JSON NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NULL,
+  `deleted_at` DATETIME NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
