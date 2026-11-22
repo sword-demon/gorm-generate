@@ -10,6 +10,7 @@ const pending = ref(false)
 
 async function ping() {
   pending.value = true
+  result.value = ""
   error.value = ""
   try {
     result.value = await invoke<string>("ping")

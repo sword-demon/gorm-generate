@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** done
+**Status:** resolved
 
 - [x] 应用可通过一条命令启动，窗口显示单页界面
 - [x] 点击按钮调用 Rust 命令并把结果回显到界面
