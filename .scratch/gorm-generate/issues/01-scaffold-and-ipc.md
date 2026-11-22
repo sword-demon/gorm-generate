@@ -22,4 +22,4 @@
 - Versions: tauri 2.12.7, @tauri-apps/cli 2.12.6, tailwindcss 4.3.5, shadcn-vue 2.9.0.
 - Verified: `cargo test` (workspace) pass; `npm run build` (vue-tsc --noEmit + vite build) pass; `npm run tauri dev` launched the app process with the dev server.
 - Manual smoke (click Ping and see the echo) is intentionally not automated per the spec's testing decisions.
-- `.cargo/config.toml` pins a sparse registry mirror because the global TUNA git index was months stale and blocked cargo resolution.
+- A local-only `.cargo/config.toml` (git-excluded via `.git/info/exclude`) pins a sparse registry mirror on this machine because the global TUNA git index was months stale and blocked cargo resolution; it is intentionally not part of the repo.
