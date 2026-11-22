@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// 用户表
 type User struct {
 	Id int64 `gorm:"column:id;primaryKey;autoIncrement;not null" json:"id"`
 	Username string `gorm:"column:username;not null" json:"username"`

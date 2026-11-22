@@ -4,12 +4,24 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] 复杂表 DDL（含各类类型、可空、注释、软删除）生成的模型符合 spec 的类型映射表
-- [ ] tinyint(1) 默认按 `int8`/`uint8`，打开开关后为 `bool`
-- [ ] 表注释与列注释出现在生成代码中
-- [ ] 未知类型生成 `any` 并出现在警告列表，界面可看到警告
-- [ ] 非建表语句被忽略并计数进警告
-- [ ] 生成文件带 DO NOT EDIT 头
-- [ ] 幂等测试：同一输入连续两次生成结果完全一致
+- [x] 复杂表 DDL（含各类类型、可空、注释、软删除）生成的模型符合 spec 的类型映射表
+- [x] tinyint(1) 默认按 `int8`/`uint8`，打开开关后为 `bool`
+- [x] 表注释与列注释出现在生成代码中
+- [x] 未知类型生成 `any` 并出现在警告列表，界面可看到警告
+- [x] 非建表语句被忽略并计数进警告
+- [x] 生成文件带 DO NOT EDIT 头
+- [x] 幂等测试：同一输入连续两次生成结果完全一致
+
+## Comments
+
+2026-11-23: Implemented on top of ticket 02's model path.
+
+- Table `COMMENT='...'` extracted from `CreateTableOptions::Plain` (MySQL path, not the Hive-only `comment` field); column `COMMENT '...'` from `ColumnOption::Comment`; both become Go comments verbatim (table comment above struct, column comment above field).
+- Non-CREATE-TABLE statements counted: `parser::ParsedScript.ignored_count` -> warning "ignored N non-CREATE-TABLE statement(s)".
+- Idempotence test: same input twice produces identical file contents (pure function by construction, test locks it).
+- Frontend: `tinyint(1) as bool` checkbox wired into the generate request.
+- Golden fixture re-recorded for the table comment (`// 用户表`).
+- Verified: `cargo test` 13 passed; `npm run build` passed.
+- Known deferrals (recorded for later tickets): PG `COMMENT ON` statements are counted as ignored here (PG dialect is ticket 05); warnings render as a plain banner instead of a Badge component (ticket 02 UI form, spec wants Badge).

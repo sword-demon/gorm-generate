@@ -34,6 +34,7 @@ const ddl = ref(
 )
 const modulePath = ref("github.com/example/app")
 const dialect = ref<"mysql" | "postgres">("mysql")
+const tinyintAsBool = ref(false)
 const project = ref<GeneratedProject | null>(null)
 const selectedPath = ref("")
 const error = ref<ParseError | null>(null)
@@ -58,7 +59,7 @@ async function generate() {
         modulePath: modulePath.value,
         cacheEnabled: false,
         cacheTtlSeconds: 0,
-        tinyintAsBool: false,
+        tinyintAsBool: tinyintAsBool.value,
       },
     })
     selectedPath.value = project.value.files[0]?.path ?? ""
@@ -101,6 +102,10 @@ const allContent = computed(() =>
           v-model="modulePath"
           class="w-64 rounded-md border border-input bg-background px-2 py-1 text-sm"
         />
+      </label>
+      <label class="flex items-center gap-2 text-sm text-muted-foreground">
+        <input v-model="tinyintAsBool" type="checkbox" class="accent-foreground" />
+        tinyint(1) as bool
       </label>
       <Button :disabled="pending" @click="generate">
         {{ pending ? "Generating..." : "Generate" }}

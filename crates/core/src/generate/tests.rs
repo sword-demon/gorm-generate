@@ -128,6 +128,56 @@ fn golden_sample_ddl_is_locked() {
     assert_eq!(actual, golden, "golden output changed; update fixtures/golden_model.go intentionally");
 }
 
+#[test]
+fn table_and_column_comments_become_go_comments() {
+    let ddl = "CREATE TABLE `users` (\
+        `id` BIGINT NOT NULL COMMENT 'primary key', \
+        `n` VARCHAR(10) NULL COMMENT 'the name', \
+        PRIMARY KEY (`id`)\
+    ) COMMENT='user table';";
+    let result = generate(&request(ddl)).expect("should generate");
+    let content = &result.files[0].content;
+
+    assert!(content.contains("// user table"), "table comment above struct, got: {content}");
+    assert!(content.contains("\t// primary key\n\tId int64"), "column comment above field");
+    assert!(content.contains("\t// the name\n\tN *string"), "nullable column keeps comment");
+}
+
+#[test]
+fn ignored_statements_are_counted_into_warnings() {
+    let ddl = "CREATE TABLE `users` (`id` BIGINT NOT NULL, PRIMARY KEY (`id`));\
+        INSERT INTO `users` VALUES (1);\
+        CREATE INDEX idx_name ON `users` (`n`);";
+    let result = generate(&request(ddl)).expect("should generate");
+    assert_eq!(result.tables, vec!["users"]);
+    let ignored = result.warnings.iter().find(|w| w.contains("ignored"));
+    assert!(ignored.is_some(), "warning should count ignored statements, got: {:?}", result.warnings);
+    assert!(ignored.unwrap().contains("2"), "two ignored statements counted");
+}
+
+#[test]
+fn multiline_comment_is_flattened_into_one_line() {
+    let ddl = "CREATE TABLE `t` (`x` INT NOT NULL COMMENT 'line1\nline2');";
+    let result = generate(&request(ddl)).expect("should generate");
+    let content = &result.files[0].content;
+    assert!(
+        content.contains("\t// line1 line2\n\tX "),
+        "comment flattened to one line, got: {content}"
+    );
+}
+
+#[test]
+fn generation_is_idempotent() {
+    let ddl = include_str!("../fixtures/sample_mysql_ddl.sql");
+    let first = generate(&request(ddl)).expect("first run");
+    let second = generate(&request(ddl)).expect("second run");
+    assert_eq!(
+        first.files.iter().map(|f| &f.content).collect::<Vec<_>>(),
+        second.files.iter().map(|f| &f.content).collect::<Vec<_>>(),
+        "same input must produce byte-identical output"
+    );
+}
+
 /// Expected golden output, paired by path. Kept inline so a mismatch prints
 /// the exact file content diff.
 const GOLDEN: &[(&str, &str)] = &[("internal/model/user.go", include_str!("../fixtures/golden_user_model.go"))];
