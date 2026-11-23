@@ -121,6 +121,9 @@ fn generation_is_idempotent_across_matrix() {
         let second = generate(&request(case.ddl, case.dialect, case.cache_enabled))
             .unwrap_or_else(|_| panic!("[{}] second generate", case.name));
 
+        // Guard against a vacuous pass: empty == empty is trivially identical.
+        assert!(!first.files.is_empty(), "[{}] generated no files", case.name);
+
         let first_files: Vec<_> = first.files.iter().map(|f| (&f.path, &f.content)).collect();
         let second_files: Vec<_> = second.files.iter().map(|f| (&f.path, &f.content)).collect();
         assert_eq!(first_files, second_files, "[{}] output not byte-identical", case.name);
