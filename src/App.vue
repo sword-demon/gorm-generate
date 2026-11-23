@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
 import { computed, ref, watch } from "vue"
 
+import CodePreview from "@/components/CodePreview.vue"
+import SqlEditor from "@/components/SqlEditor.vue"
 import { Button } from "@/components/ui/button"
 
 interface GeneratedFile {
@@ -100,6 +102,8 @@ const pending = ref(false)
 const copied = ref("")
 const exporting = ref(false)
 const exportMsg = ref("")
+// Toast dismissal: hide the parse-error toast without losing the inline error.
+const toastDismissed = ref(false)
 // Selected tables; set to all tables on each generate.
 const selectedTables = ref<Set<string>>(new Set())
 
@@ -145,6 +149,7 @@ async function generate() {
   selectedPath.value = ""
   error.value = null
   copied.value = ""
+  toastDismissed.value = false
   try {
     project.value = await invoke<GeneratedProject>("generate_project", {
       request: {
@@ -160,10 +165,23 @@ async function generate() {
     selectedTables.value = new Set(project.value.tables)
     selectedPath.value = project.value.files[0]?.path ?? ""
   } catch (cause) {
-    error.value = cause as ParseError
+    error.value = toParseError(cause)
   } finally {
     pending.value = false
   }
+}
+
+// Tauri rejects with whatever the command returned; narrow to the shape we
+// render instead of trusting an arbitrary value.
+function toParseError(cause: unknown): ParseError {
+  if (cause && typeof cause === "object" && "snippet" in cause) {
+    const c = cause as Partial<ParseError>
+    return {
+      statement_index: typeof c.statement_index === "number" ? c.statement_index : 0,
+      snippet: typeof c.snippet === "string" ? c.snippet : String(cause),
+    }
+  }
+  return { statement_index: 0, snippet: String(cause) }
 }
 
 async function copy(text: string, label: string) {
@@ -208,10 +226,48 @@ async function exportToDir() {
 const allContent = computed(() =>
   visibleFiles.value.map((f) => `// ==== ${f.path} ====\n${f.content}`).join("\n"),
 )
+
+// Dependency hints follow the current switches. Mirrors the imports emitted
+// by crates/core/src/layers.rs — keep the two in sync.
+const goGetDeps = computed(() => {
+  const deps = ["gorm.io/gorm"]
+  if (cacheEnabled.value) deps.push("github.com/redis/go-redis/v9")
+  return deps
+})
+
+// Parse error toast: shown right after a failed generate, dismissible.
+const showErrorToast = computed(() => error.value !== null && !toastDismissed.value)
+
+function dismissToast() {
+  toastDismissed.value = true
+}
 </script>
 
 <template>
   <div class="flex h-screen flex-col bg-background text-foreground">
+    <!-- Parse-error toast (fixed, dismissible). -->
+    <div
+      v-if="error && showErrorToast"
+      class="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive shadow-lg"
+      role="alert"
+    >
+      <div class="min-w-0">
+        <div class="font-medium">
+          <template v-if="error.statement_index">
+            Parse error in statement #{{ error.statement_index }}
+          </template>
+          <template v-else>Parse error</template>
+        </div>
+        <pre class="mt-1 whitespace-pre-wrap break-words font-mono text-xs">{{ error.snippet }}</pre>
+      </div>
+      <button
+        class="shrink-0 rounded p-1 hover:bg-destructive/20"
+        aria-label="Dismiss"
+        @click="dismissToast"
+      >
+        ✕
+      </button>
+    </div>
     <header
       class="flex items-center gap-4 border-b border-border px-4 py-3"
     >
@@ -260,11 +316,7 @@ const allContent = computed(() =>
         <div class="px-3 pt-2 text-xs font-medium text-muted-foreground">
           SQL DDL
         </div>
-        <textarea
-          v-model="ddl"
-          spellcheck="false"
-          class="min-h-0 flex-1 resize-none bg-transparent p-3 font-mono text-sm outline-none"
-        />
+        <SqlEditor v-model="ddl" />
       </section>
 
       <section class="flex w-1/2 min-w-0 flex-col">
@@ -279,12 +331,21 @@ const allContent = computed(() =>
         </div>
 
         <template v-else-if="project">
-          <div
+          <details
             v-if="project.warnings.length"
-            class="m-3 rounded-md border border-yellow-600/50 bg-yellow-500/10 p-2 text-xs text-yellow-700"
+            class="m-3 rounded-md border border-yellow-600/50 bg-yellow-500/10 text-xs text-yellow-700"
           >
-            <div v-for="w in project.warnings" :key="w">{{ w }}</div>
-          </div>
+            <summary class="flex cursor-pointer items-center gap-2 p-2">
+              <span
+                class="inline-flex items-center rounded-full bg-yellow-600/20 px-2 py-0.5 font-medium"
+              >
+                {{ project.warnings.length }} warning{{ project.warnings.length === 1 ? "" : "s" }}
+              </span>
+            </summary>
+            <ul class="list-disc space-y-1 px-6 pb-2">
+              <li v-for="w in project.warnings" :key="w">{{ w }}</li>
+            </ul>
+          </details>
           <div class="flex items-center gap-2 border-b border-border px-3 py-2">
             <span class="text-xs text-muted-foreground">
               {{ visibleFiles.length }} / {{ project.files.length }} files
@@ -350,10 +411,28 @@ const allContent = computed(() =>
                   {{ copied === selectedFile.path ? "Copied!" : "Copy" }}
                 </Button>
               </div>
-              <pre
-                class="min-h-0 flex-1 overflow-auto bg-muted/40 p-3 font-mono text-xs leading-relaxed"
-              >{{ selectedFile?.content }}</pre>
+              <CodePreview
+                v-if="selectedFile"
+                :code="selectedFile.content"
+                lang="go"
+              />
+              <div
+                v-else
+                class="flex min-h-0 flex-1 items-center justify-center text-xs text-muted-foreground"
+              >
+                No file selected.
+              </div>
             </div>
+          </div>
+          <div
+            class="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground"
+          >
+            <span class="font-medium">Dependencies</span>
+            <code
+              v-for="dep in goGetDeps"
+              :key="dep"
+              class="rounded bg-muted px-1.5 py-0.5 font-mono"
+            >go get {{ dep }}</code>
           </div>
         </template>
 
