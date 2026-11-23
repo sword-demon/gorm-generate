@@ -35,6 +35,8 @@ const ddl = ref(
 const modulePath = ref("github.com/example/app")
 const dialect = ref<"mysql" | "postgres">("mysql")
 const tinyintAsBool = ref(false)
+const cacheEnabled = ref(false)
+const cacheTtlSeconds = ref(300)
 const project = ref<GeneratedProject | null>(null)
 const selectedPath = ref("")
 const error = ref<ParseError | null>(null)
@@ -57,8 +59,8 @@ async function generate() {
         ddl: ddl.value,
         dialect: dialect.value,
         modulePath: modulePath.value,
-        cacheEnabled: false,
-        cacheTtlSeconds: 0,
+        cacheEnabled: cacheEnabled.value,
+        cacheTtlSeconds: cacheTtlSeconds.value,
         tinyintAsBool: tinyintAsBool.value,
       },
     })
@@ -106,6 +108,22 @@ const allContent = computed(() =>
       <label class="flex items-center gap-2 text-sm text-muted-foreground">
         <input v-model="tinyintAsBool" type="checkbox" class="accent-foreground" />
         tinyint(1) as bool
+      </label>
+      <label class="flex items-center gap-2 text-sm text-muted-foreground">
+        <input v-model="cacheEnabled" type="checkbox" class="accent-foreground" />
+        Redis cache
+      </label>
+      <label
+        v-if="cacheEnabled"
+        class="flex items-center gap-2 text-sm text-muted-foreground"
+      >
+        TTL(s)
+        <input
+          v-model.number="cacheTtlSeconds"
+          type="number"
+          min="1"
+          class="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm"
+        />
       </label>
       <Button :disabled="pending" @click="generate">
         {{ pending ? "Generating..." : "Generate" }}

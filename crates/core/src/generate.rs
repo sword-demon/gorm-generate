@@ -73,6 +73,9 @@ pub fn generate(request: &GenerateRequest) -> Result<GeneratedProject, ParseErro
         }
         files.push(layers::render_repository(table, request));
         files.push(layers::render_service(table, request));
+        if request.cache_enabled {
+            files.push(layers::render_cache(table, request));
+        }
     }
 
     if script.ignored_count > 0 {

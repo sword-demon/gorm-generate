@@ -408,3 +408,123 @@ const GOLDEN_PG: &[(&str, &str)] = &[
     ("internal/repository/user_repo.go", include_str!("../fixtures/golden_pg_user_repo.txt")),
     ("internal/service/user_service.go", include_str!("../fixtures/golden_pg_user_service.txt")),
 ];
+
+#[test]
+fn cache_disabled_generates_no_cache_files() {
+    let ddl = "CREATE TABLE `users` (`id` BIGINT NOT NULL AUTO_INCREMENT, \
+        `n` VARCHAR(10) NOT NULL, PRIMARY KEY (`id`));";
+    let result = generate(&request(ddl)).expect("should generate");
+    let paths: Vec<_> = result.files.iter().map(|f| f.path.as_str()).collect();
+    assert!(!paths.iter().any(|p| p.contains("cache")), "no cache files when disabled");
+}
+
+#[test]
+fn cache_enabled_generates_cache_file() {
+    let ddl = "CREATE TABLE `users` (`id` BIGINT NOT NULL AUTO_INCREMENT, \
+        `n` VARCHAR(10) NOT NULL, PRIMARY KEY (`id`));";
+    let mut req = request(ddl);
+    req.cache_enabled = true;
+    req.cache_ttl_seconds = 300;
+    let result = generate(&req).expect("should generate");
+    let paths: Vec<_> = result.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        vec![
+            "internal/model/user.go",
+            "internal/repository/user_repo.go",
+            "internal/service/user_service.go",
+            "internal/cache/user_cache.go",
+        ]
+    );
+    let cache = &result.files.iter().find(|f| f.path.ends_with("user_cache.go")).unwrap().content;
+    assert!(cache.contains("package cache"), "cache package");
+    assert!(cache.contains("\"github.com/redis/go-redis/v9\""), "imports go-redis");
+    assert!(cache.contains("UserCacheTTL = 300 * time.Second"), "TTL constant");
+    assert!(cache.contains("type userCacheRepo struct"), "cache impl struct");
+    assert!(cache.contains("func NewUserRepoWithCache(repo repository.UserRepository, rdb *redis.Client) repository.UserRepository"), "factory");
+    assert!(cache.contains("fmt.Sprintf(\"users:%v\", id)"), "cache key for single PK, got: {cache}");
+    assert!(cache.contains("c.rdb.Get(ctx, key)"), "GetByID reads cache");
+    assert!(cache.contains("c.rdb.Set(ctx, key, encoded,"), "GetByID writes cache on miss");
+    assert!(cache.contains("c.rdb.Del(ctx, key)"), "Update/Delete invalidate");
+    assert!(cache.contains("return c.repo.List("), "List passthrough");
+    assert!(cache.contains("return c.repo.Create("), "Create passthrough");
+}
+
+#[test]
+fn cache_composite_pk_key_format() {
+    let ddl = "CREATE TABLE `order_items` (`order_id` BIGINT NOT NULL, \
+        `item_id` BIGINT NOT NULL, PRIMARY KEY (`order_id`, `item_id`));";
+    let mut req = request(ddl);
+    req.cache_enabled = true;
+    req.cache_ttl_seconds = 600;
+    let result = generate(&req).expect("should generate");
+    let cache = &result.files.iter().find(|f| f.path.ends_with("order_item_cache.go")).unwrap().content;
+    assert!(
+        cache.contains("fmt.Sprintf(\"order_items:%v:%v\", orderId, itemId)"),
+        "composite key, got: {cache}"
+    );
+}
+
+#[test]
+fn cache_update_uses_model_fields_for_key() {
+    let ddl = "CREATE TABLE `users` (`id` BIGINT NOT NULL AUTO_INCREMENT, PRIMARY KEY (`id`));";
+    let mut req = request(ddl);
+    req.cache_enabled = true;
+    req.cache_ttl_seconds = 300;
+    let result = generate(&req).expect("should generate");
+    let cache = &result.files.iter().find(|f| f.path.ends_with("user_cache.go")).unwrap().content;
+    assert!(
+        cache.contains("fmt.Sprintf(\"users:%v\", m.Id)"),
+        "Update extracts PK from model, got: {cache}"
+    );
+}
+
+#[test]
+fn cache_errors_degrade_to_db() {
+    let ddl = "CREATE TABLE `users` (`id` BIGINT NOT NULL AUTO_INCREMENT, PRIMARY KEY (`id`));";
+    let mut req = request(ddl);
+    req.cache_enabled = true;
+    req.cache_ttl_seconds = 300;
+    let result = generate(&req).expect("should generate");
+    let cache = &result.files.iter().find(|f| f.path.ends_with("user_cache.go")).unwrap().content;
+    // GetByID: Redis Get failure falls through to DB
+    assert!(cache.contains("m, dbErr := c.repo.GetByID("), "fallback to DB on cache miss/error");
+    // Update/Delete: Redis Del failures are silently ignored (` _ = `)
+    assert!(cache.contains("_ = c.rdb.Del("), "cache invalidation errors ignored");
+    // Set failure also ignored
+    assert!(cache.contains("_ = c.rdb.Set("), "cache write errors ignored");
+}
+
+#[test]
+fn no_pk_table_no_cache_even_when_enabled() {
+    let ddl = "CREATE TABLE `logs` (`msg` VARCHAR(200) NOT NULL);";
+    let mut req = request(ddl);
+    req.cache_enabled = true;
+    req.cache_ttl_seconds = 300;
+    let result = generate(&req).expect("should generate");
+    let paths: Vec<_> = result.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, vec!["internal/model/log.go"], "no cache for no-PK table");
+}
+
+#[test]
+fn golden_cache_is_locked() {
+    let ddl = include_str!("../fixtures/sample_mysql_ddl.sql");
+    let mut req = request(ddl);
+    req.cache_enabled = true;
+    req.cache_ttl_seconds = 300;
+    let result = generate(&req).expect("golden DDL should parse");
+    let actual: Vec<(&str, &str)> = result
+        .files
+        .iter()
+        .map(|f| (f.path.as_str(), f.content.as_str()))
+        .collect();
+    let golden: Vec<(&str, &str)> = GOLDEN_CACHE.iter().copied().collect();
+    assert_eq!(actual, golden, "golden cache output changed");
+}
+
+const GOLDEN_CACHE: &[(&str, &str)] = &[
+    ("internal/model/user.go", include_str!("../fixtures/golden_user.txt")),
+    ("internal/repository/user_repo.go", include_str!("../fixtures/golden_user_repo.txt")),
+    ("internal/service/user_service.go", include_str!("../fixtures/golden_user_service.txt")),
+    ("internal/cache/user_cache.go", include_str!("../fixtures/golden_user_cache.txt")),
+];
