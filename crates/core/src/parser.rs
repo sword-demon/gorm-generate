@@ -3,7 +3,7 @@
 use sqlparser::ast::{
     ColumnDef, ColumnOption, CreateTable, DataType, Statement, TableConstraint,
 };
-use sqlparser::dialect::MySqlDialect;
+use sqlparser::dialect::{MySqlDialect, PostgreSqlDialect};
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::Token;
 
@@ -23,11 +23,13 @@ pub struct ParsedScript {
     pub ignored_count: usize,
 }
 
-/// Parses the DDL script, keeping only CREATE TABLE statements. Other
-/// statements are ignored and counted (spec: 非建表语句被忽略并计数).
+/// Parses the DDL script, keeping only CREATE TABLE statements and PG
+/// COMMENT ON (merged into the referenced table). Other statements are
+/// ignored and counted (spec: 非建表语句被忽略并计数).
 pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, ParseError> {
     let parser_dialect: &dyn sqlparser::dialect::Dialect = match dialect {
         Dialect::MySql => &MySqlDialect {},
+        Dialect::PostgreSql => &PostgreSqlDialect {},
     };
 
     let statements = Parser::parse_sql(parser_dialect, ddl).map_err(|e| ParseError {
@@ -67,6 +69,19 @@ pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, ParseError
                     primary_key,
                 });
             }
+            Statement::Comment {
+                object_type,
+                object_name,
+                comment,
+                ..
+            } => {
+                apply_comment(
+                    &mut tables,
+                    *object_type,
+                    object_name,
+                    comment.as_deref(),
+                );
+            }
             _ => {
                 ignored_count += 1;
             }
@@ -76,6 +91,64 @@ pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, ParseError
         tables,
         ignored_count,
     })
+}
+
+/// Merges PG `COMMENT ON TABLE t IS '...'` / `COMMENT ON COLUMN t.c IS '...'`
+/// into the already-parsed table. Column names are matched
+/// case-insensitively (PG folds unquoted identifiers to lowercase).
+fn apply_comment(
+    tables: &mut [ParsedTable],
+    object_type: sqlparser::ast::CommentObject,
+    object_name: &sqlparser::ast::ObjectName,
+    comment: Option<&str>,
+) {
+    let Some(comment) = comment else { return };
+    let Some(table_part) = object_name.0.first() else { return };
+    let sqlparser::ast::ObjectNamePart::Identifier(table_ident) = table_part else { return };
+    let table_name = table_ident.value.to_lowercase();
+
+    let column_name = match object_name.0.get(1) {
+        Some(sqlparser::ast::ObjectNamePart::Identifier(ident)) => {
+            Some(ident.value.to_lowercase())
+        }
+        _ => None,
+    };
+
+    let table = match tables
+        .iter_mut()
+        .find(|t| t.name.to_lowercase() == table_name)
+    {
+        Some(t) => t,
+        None => return,
+    };
+
+    match (object_type, column_name) {
+        (sqlparser::ast::CommentObject::Table, _) => table.comment = Some(comment.to_string()),
+        (sqlparser::ast::CommentObject::Column, Some(col)) => {
+            if let Some(found) = table
+                .columns
+                .iter_mut()
+                .find(|c| c.name.value.to_lowercase() == col)
+            {
+                // PG semantics are last-write-wins: replace an existing
+                // comment instead of appending a second one.
+                match found
+                    .options
+                    .iter_mut()
+                    .find(|o| matches!(o.option, sqlparser::ast::ColumnOption::Comment(_)))
+                {
+                    Some(existing) => {
+                        existing.option = sqlparser::ast::ColumnOption::Comment(comment.to_string())
+                    }
+                    None => found.options.push(sqlparser::ast::ColumnOptionDef {
+                        name: None,
+                        option: sqlparser::ast::ColumnOption::Comment(comment.to_string()),
+                    }),
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 fn comment_text(def: &sqlparser::ast::CommentDef) -> String {
@@ -156,6 +229,7 @@ pub fn classify_mysql_type(data_type: &DataType) -> (String, bool, Option<u64>) 
         DataType::BigIntUnsigned(w) => ("bigint".into(), true, *w),
         DataType::Decimal(_) | DataType::Dec(_) => ("decimal".into(), false, None),
         DataType::DecimalUnsigned(_) | DataType::DecUnsigned(_) => ("decimal".into(), true, None),
+        DataType::Numeric(_) | DataType::BigNumeric(_) => ("numeric".into(), false, None),
         DataType::Float(_) | DataType::FloatUnsigned(_) => ("float".into(), false, None),
         DataType::Double(_) | DataType::DoubleUnsigned(_) | DataType::DoublePrecision => {
             ("double".into(), false, None)
@@ -168,7 +242,7 @@ pub fn classify_mysql_type(data_type: &DataType) -> (String, bool, Option<u64>) 
         DataType::Text | DataType::TinyText | DataType::MediumText | DataType::LongText => {
             ("text".into(), false, None)
         }
-        DataType::Varbinary(_) | DataType::Binary(_) => ("binary".into(), false, None),
+        DataType::Varbinary(_) | DataType::Binary(_) | DataType::Bytea => ("binary".into(), false, None),
         DataType::Blob(_) | DataType::TinyBlob | DataType::MediumBlob | DataType::LongBlob => {
             ("blob".into(), false, None)
         }
@@ -179,17 +253,47 @@ pub fn classify_mysql_type(data_type: &DataType) -> (String, bool, Option<u64>) 
         DataType::Timestamp(_, _) => ("timestamp".into(), false, None),
         DataType::Time(_, _) => ("time".into(), false, None),
         DataType::Date => ("date".into(), false, None),
-        DataType::Custom(name, _) => (
-            name.0
+        DataType::Custom(name, _) => {
+            // PG SERIAL family parses as Custom types; normalize to the
+            // underlying int with an autoIncrement signal carried separately.
+            let base = name
+                .0
                 .last()
                 .map(ident_value)
                 .unwrap_or_default()
-                .to_lowercase(),
-            false,
-            None,
-        ),
+                .to_lowercase();
+            match base.as_str() {
+                "serial" => ("int".into(), false, None),
+                "smallserial" => ("smallint".into(), false, None),
+                "bigserial" => ("bigint".into(), false, None),
+                "uuid" => ("uuid".into(), false, None),
+                "bytea" => ("bytea".into(), false, None),
+                other => (other.to_string(), false, None),
+            }
+        }
         other => (format!("{other:?}").to_lowercase(), false, None),
     }
+}
+
+/// PG `GENERATED ... AS IDENTITY` marks a column auto-increment.
+pub fn is_identity(col: &ColumnDef) -> bool {
+    col.options.iter().any(|opt| {
+        matches!(
+            &opt.option,
+            sqlparser::ast::ColumnOption::Generated { generated_keyword: true, .. }
+        )
+    })
+}
+
+/// True when the column is a SERIAL-family Custom type (PG).
+pub fn is_serial(data_type: &DataType) -> bool {
+    if let DataType::Custom(name, _) = data_type {
+        if let Some(part) = name.0.last() {
+            let v = ident_value(part).to_lowercase();
+            return matches!(v.as_str(), "serial" | "bigserial" | "smallserial");
+        }
+    }
+    false
 }
 
 fn ident_value(part: &sqlparser::ast::ObjectNamePart) -> String {

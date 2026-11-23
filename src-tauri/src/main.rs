@@ -43,6 +43,7 @@ fn ping() -> String {
 fn generate_project(request: GenerateRequestPayload) -> Result<GeneratedProjectPayload, ParseErrorPayload> {
     let dialect = match request.dialect.as_str() {
         "mysql" => gorm_generate_core::generate::Dialect::MySql,
+        "postgres" => gorm_generate_core::generate::Dialect::PostgreSql,
         other => {
             return Err(ParseErrorPayload {
                 statement_index: 0,

@@ -41,7 +41,9 @@ pub fn map_type(
         ) => "string".to_string(),
         ("date" | "time" | "timestamp" | "datetime" | "year", _, _) => "time.Time".to_string(),
         ("json", _, _) => "json.RawMessage".to_string(),
-        ("blob" | "tinyblob" | "mediumblob" | "longblob" | "binary" | "varbinary", _, _) => "[]byte".to_string(),
+        ("blob" | "tinyblob" | "mediumblob" | "longblob" | "binary" | "varbinary" | "bytea", _, _) => "[]byte".to_string(),
+        ("uuid", _, _) => "string".to_string(),
+        ("number", _, _) => "string".to_string(),
         _ => {
             return MappedType {
                 go_type: "any".to_string(),
@@ -50,7 +52,10 @@ pub fn map_type(
         }
     };
 
-    let go_type = if nullable {
+    // []byte and json.RawMessage already express nullability via nil; a
+    // pointer to them adds noise, so they are never pointered.
+    let pointerable = go_type != "[]byte" && go_type != "json.RawMessage";
+    let go_type = if nullable && pointerable {
         format!("*{go_type}")
     } else {
         go_type

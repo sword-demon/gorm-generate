@@ -17,7 +17,7 @@ type User struct {
 	Balance string `gorm:"column:balance;not null" json:"balance"`
 	AvatarUrl *string `gorm:"column:avatar_url" json:"avatar_url"`
 	Status int8 `gorm:"column:status;not null" json:"status"`
-	Settings *json.RawMessage `gorm:"column:settings" json:"settings"`
+	Settings json.RawMessage `gorm:"column:settings" json:"settings"`
 	CreatedAt time.Time `gorm:"column:created_at;not null" json:"created_at"`
 	UpdatedAt *time.Time `gorm:"column:updated_at" json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"column:deleted_at" json:"deleted_at"`

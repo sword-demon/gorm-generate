@@ -2,7 +2,7 @@
 
 use crate::layers;
 use crate::naming::{field_name, snake_case, struct_name};
-use crate::parser::{self, classify_mysql_type, is_auto_increment};
+use crate::parser::{self, classify_mysql_type, is_auto_increment, is_identity, is_serial};
 use crate::types::map_type;
 
 #[cfg(test)]
@@ -12,7 +12,7 @@ mod tests;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Dialect {
     MySql,
-    // PostgreSQL is handled by a later ticket.
+    PostgreSql,
 }
 
 /// Everything the generator needs; UI-facing options map 1:1.
@@ -122,7 +122,9 @@ fn render_model(
         if is_pk {
             gorm_parts.push("primaryKey".to_string());
         }
-        if is_auto_increment(col) {
+        // MySQL AUTO_INCREMENT token, PG SERIAL family, or GENERATED AS
+        // IDENTITY all mean auto-increment.
+        if is_auto_increment(col) || is_serial(&col.data_type) || is_identity(col) {
             gorm_parts.push("autoIncrement".to_string());
         }
         if !nullable {

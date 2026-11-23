@@ -94,7 +94,7 @@ const allContent = computed(() =>
         class="rounded-md border border-input bg-background px-2 py-1 text-sm"
       >
         <option value="mysql">MySQL</option>
-        <option value="postgres" disabled>PostgreSQL</option>
+        <option value="postgres">PostgreSQL</option>
       </select>
       <label class="flex items-center gap-2 text-sm text-muted-foreground">
         module path
