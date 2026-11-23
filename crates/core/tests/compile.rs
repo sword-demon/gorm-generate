@@ -32,31 +32,45 @@ fn cases() -> Vec<Case> {
     ]
 }
 
-fn request(ddl: &str, dialect: Dialect, cache_enabled: bool) -> GenerateRequest {
+fn request(case: &Case) -> GenerateRequest {
     GenerateRequest {
-        ddl: ddl.to_string(),
-        dialect,
+        ddl: case.ddl.to_string(),
+        dialect: case.dialect,
         module_path: "github.com/example/app".to_string(),
-        cache_enabled,
+        cache_enabled: case.cache_enabled,
         cache_ttl_seconds: 300,
         tinyint_as_bool: false,
     }
 }
 
-/// Fresh unique temp dir for a case; removed by the caller.
-fn temp_project(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "gorm-generate-compile-{name}-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("create temp project dir");
-    dir
+/// A temp project dir that is removed on drop — even if an assert panics.
+struct TempProject(PathBuf);
+
+impl TempProject {
+    fn new(name: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!(
+            "gorm-generate-compile-{name}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp project dir");
+        TempProject(dir)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempProject {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// Writes the generated files plus a go.mod into `dir`.
-fn write_project(dir: &Path, ddl: &str, dialect: Dialect, cache_enabled: bool) {
-    let project = generate(&request(ddl, dialect, cache_enabled)).expect("generate");
+fn write_project(dir: &Path, case: &Case) {
+    let project = generate(&request(case)).expect("generate");
 
     // Guard against a vacuous pass: an empty module builds and is trivially
     // idempotent, so require the expected layers to exist.
@@ -67,7 +81,7 @@ fn write_project(dir: &Path, ddl: &str, dialect: Dialect, cache_enabled: bool) {
     assert!(paths.iter().any(|p| p.ends_with("_service.go")), "missing service file: {paths:?}");
     assert_eq!(
         paths.iter().any(|p| p.ends_with("_cache.go")),
-        cache_enabled,
+        case.cache_enabled,
         "cache file presence must match the switch: {paths:?}"
     );
 
@@ -76,7 +90,7 @@ fn write_project(dir: &Path, ddl: &str, dialect: Dialect, cache_enabled: bool) {
     // go.mod: module path matches the generator's module_path so the internal
     // imports resolve. Requires are pinned to versions known to resolve.
     let go_mod = "module github.com/example/app\n\ngo 1.27\n\nrequire (\n\tgorm.io/gorm v1.31.2\n";
-    let go_mod = if cache_enabled {
+    let go_mod = if case.cache_enabled {
         format!("{go_mod}\tgithub.com/redis/go-redis/v9 v9.7.0\n)\n")
     } else {
         format!("{go_mod})\n")
@@ -99,26 +113,24 @@ fn run(dir: &Path, program: &str, args: &[&str]) -> (bool, String) {
 #[test]
 fn generated_code_compiles_across_matrix() {
     for case in cases() {
-        let dir = temp_project(case.name);
-        write_project(&dir, case.ddl, case.dialect, case.cache_enabled);
+        let project = TempProject::new(case.name);
+        write_project(project.path(), &case);
 
         // `go mod tidy` resolves go.sum from the module cache/proxy; then build.
-        let (tidy_ok, tidy_out) = run(&dir, "go", &["mod", "tidy"]);
+        let (tidy_ok, tidy_out) = run(project.path(), "go", &["mod", "tidy"]);
         assert!(tidy_ok, "[{}] go mod tidy failed:\n{tidy_out}", case.name);
 
-        let (build_ok, build_out) = run(&dir, "go", &["build", "./..."]);
+        let (build_ok, build_out) = run(project.path(), "go", &["build", "./..."]);
         assert!(build_ok, "[{}] go build failed:\n{build_out}", case.name);
-
-        std::fs::remove_dir_all(&dir).ok();
     }
 }
 
 #[test]
 fn generation_is_idempotent_across_matrix() {
     for case in cases() {
-        let first = generate(&request(case.ddl, case.dialect, case.cache_enabled))
+        let first = generate(&request(&case))
             .unwrap_or_else(|_| panic!("[{}] first generate", case.name));
-        let second = generate(&request(case.ddl, case.dialect, case.cache_enabled))
+        let second = generate(&request(&case))
             .unwrap_or_else(|_| panic!("[{}] second generate", case.name));
 
         // Guard against a vacuous pass: empty == empty is trivially identical.
