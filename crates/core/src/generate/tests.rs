@@ -121,6 +121,24 @@ fn multiple_tables_generate_separate_files() {
 }
 
 #[test]
+fn every_file_carries_its_source_table() {
+    let ddl = "CREATE TABLE `users` (`id` BIGINT NOT NULL, PRIMARY KEY (`id`));\
+        CREATE TABLE `orders` (`id` BIGINT NOT NULL, PRIMARY KEY (`id`));";
+    let result = generate(&request(ddl)).expect("should generate");
+    for file in &result.files {
+        assert!(
+            file.table == "users" || file.table == "orders",
+            "file {} has table {:?}",
+            file.path,
+            file.table
+        );
+        // Path prefix and table agree: user.go -> users, order_repo.go -> orders.
+        let expected = if file.path.contains("/user") { "users" } else { "orders" };
+        assert_eq!(file.table, expected, "path {} table mismatch", file.path);
+    }
+}
+
+#[test]
 fn golden_sample_ddl_is_locked() {
     let ddl = include_str!("../fixtures/sample_mysql_ddl.sql");
     let result = generate(&request(ddl)).expect("golden DDL should parse");

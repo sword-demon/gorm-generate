@@ -93,10 +93,12 @@ mod tests {
             GeneratedFile {
                 path: "internal/model/user.go".to_string(),
                 content: "package model\n".to_string(),
+                table: "users".to_string(),
             },
             GeneratedFile {
                 path: "internal/repository/user_repo.go".to_string(),
                 content: "package repository\n".to_string(),
+                table: "users".to_string(),
             },
         ]
     }
@@ -154,6 +156,7 @@ mod tests {
         let changed = vec![GeneratedFile {
             path: "internal/model/user.go".to_string(),
             content: "package model // v2\n".to_string(),
+            table: "users".to_string(),
         }];
         export_project(&dir, &changed, true).expect("overwrite allowed");
 
@@ -171,6 +174,7 @@ mod tests {
         let bad = vec![GeneratedFile {
             path: "/etc/passwd".to_string(),
             content: "x".to_string(),
+            table: "users".to_string(),
         }];
         let err = export_project(&dir, &bad, false).expect_err("absolute rejected");
         assert!(matches!(err, ExportError::UnsafePath(_)), "got {err:?}");
@@ -183,6 +187,7 @@ mod tests {
         let bad = vec![GeneratedFile {
             path: "../escape.go".to_string(),
             content: "x".to_string(),
+            table: "users".to_string(),
         }];
         let err = export_project(&dir, &bad, false).expect_err("traversal rejected");
         assert!(matches!(err, ExportError::UnsafePath(_)), "got {err:?}");

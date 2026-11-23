@@ -120,6 +120,7 @@ func (r *{impl_type}) Delete({get_params}) error {{
     GeneratedFile {
         path: format!("internal/repository/{}_repo.go", file_base),
         content,
+        table: table.name.clone(),
     }
 }
 
@@ -200,6 +201,7 @@ func (s *{impl_type}) Delete({get_params}) error {{
     GeneratedFile {
         path: format!("internal/service/{}_service.go", file_base),
         content,
+        table: table.name.clone(),
     }
 }
 
@@ -340,6 +342,7 @@ func (c *{impl_type}) Delete({get_params}) error {{
     GeneratedFile {
         path: format!("internal/cache/{}_cache.go", file_base),
         content,
+        table: table.name.clone(),
     }
 }
 

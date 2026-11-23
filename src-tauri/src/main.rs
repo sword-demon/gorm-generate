@@ -28,6 +28,9 @@ struct GeneratedProjectPayload {
 struct GeneratedFilePayload {
     path: String,
     content: String,
+    /// Source table, used by the UI to filter files by selected tables.
+    #[serde(default)]
+    table: String,
 }
 
 /// IPC layer only forwards: parsing and generation live in `gorm-generate-core`.
@@ -67,6 +70,7 @@ fn generate_project(request: GenerateRequestPayload) -> Result<GeneratedProjectP
                 .map(|f| GeneratedFilePayload {
                     path: f.path,
                     content: f.content,
+                    table: f.table,
                 })
                 .collect(),
             tables: project.tables,
@@ -109,6 +113,7 @@ fn export_project(
         .map(|f| gorm_generate_core::GeneratedFile {
             path: f.path,
             content: f.content,
+            table: f.table,
         })
         .collect();
 

@@ -26,11 +26,13 @@ pub struct GenerateRequest {
     pub tinyint_as_bool: bool,
 }
 
-/// One generated file, path is project-relative.
+/// One generated file, path is project-relative. `table` names the source
+/// table so the UI can filter files by selected tables.
 #[derive(Debug, PartialEq)]
 pub struct GeneratedFile {
     pub path: String,
     pub content: String,
+    pub table: String,
 }
 
 /// Full output of one generation run. Pure: same request, byte-identical result.
@@ -211,6 +213,7 @@ fn render_model(
                 snake_case(&struct_name)
             ),
             content,
+            table: table.name.clone(),
         },
         warnings,
     )

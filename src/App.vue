@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
-import { computed, ref } from "vue"
+import { computed, ref, watch } from "vue"
 
 import { Button } from "@/components/ui/button"
 
 interface GeneratedFile {
   path: string
   content: string
+  table: string
 }
 
 interface GeneratedProject {
@@ -21,23 +22,77 @@ interface ParseError {
   snippet: string
 }
 
-const ddl = ref(
+interface ExportResult {
+  conflicts: string[]
+  error: string | null
+}
+
+const STORAGE_KEY = "gorm-generate:state"
+
+const defaultDdl =
   "CREATE TABLE `users` (\n" +
-    "  `id` BIGINT NOT NULL AUTO_INCREMENT,\n" +
-    "  `username` VARCHAR(64) NOT NULL,\n" +
-    "  `email` VARCHAR(128) NOT NULL,\n" +
-    "  `age` TINYINT(1) NULL,\n" +
-    "  `balance` DECIMAL(12,2) NOT NULL,\n" +
-    "  `created_at` DATETIME NOT NULL,\n" +
-    "  `deleted_at` DATETIME NULL,\n" +
-    "  PRIMARY KEY (`id`)\n" +
-    ") ENGINE=InnoDB COMMENT='用户表';",
-)
-const modulePath = ref("github.com/example/app")
-const dialect = ref<"mysql" | "postgres">("mysql")
-const tinyintAsBool = ref(false)
-const cacheEnabled = ref(false)
-const cacheTtlSeconds = ref(300)
+  "  `id` BIGINT NOT NULL AUTO_INCREMENT,\n" +
+  "  `username` VARCHAR(64) NOT NULL,\n" +
+  "  `email` VARCHAR(128) NOT NULL,\n" +
+  "  `age` TINYINT(1) NULL,\n" +
+  "  `balance` DECIMAL(12,2) NOT NULL,\n" +
+  "  `created_at` DATETIME NOT NULL,\n" +
+  "  `deleted_at` DATETIME NULL,\n" +
+  "  PRIMARY KEY (`id`)\n" +
+  ") ENGINE=InnoDB COMMENT='用户表';"
+
+interface PersistedState {
+  ddl: string
+  dialect: "mysql" | "postgres"
+  modulePath: string
+  cacheEnabled: boolean
+  cacheTtlSeconds: number
+  tinyintAsBool: boolean
+}
+
+function loadState(): PersistedState {
+  const base = defaults()
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return base
+    const s = JSON.parse(raw)
+    // Validate each field; a corrupt/stale value falls back to its default.
+    return {
+      ddl: typeof s.ddl === "string" ? s.ddl : base.ddl,
+      dialect: s.dialect === "postgres" ? "postgres" : "mysql",
+      modulePath: typeof s.modulePath === "string" ? s.modulePath : base.modulePath,
+      cacheEnabled: typeof s.cacheEnabled === "boolean" ? s.cacheEnabled : base.cacheEnabled,
+      cacheTtlSeconds:
+        Number.isInteger(s.cacheTtlSeconds) && s.cacheTtlSeconds > 0
+          ? s.cacheTtlSeconds
+          : base.cacheTtlSeconds,
+      tinyintAsBool: typeof s.tinyintAsBool === "boolean" ? s.tinyintAsBool : base.tinyintAsBool,
+    }
+  } catch {
+    // ignore corrupt state, fall back to defaults
+  }
+  return base
+}
+
+function defaults(): PersistedState {
+  return {
+    ddl: defaultDdl,
+    dialect: "mysql",
+    modulePath: "github.com/example/app",
+    cacheEnabled: false,
+    cacheTtlSeconds: 300,
+    tinyintAsBool: false,
+  }
+}
+
+const initial = loadState()
+const ddl = ref(initial.ddl)
+const modulePath = ref(initial.modulePath)
+const dialect = ref<"mysql" | "postgres">(initial.dialect)
+const tinyintAsBool = ref(initial.tinyintAsBool)
+const cacheEnabled = ref(initial.cacheEnabled)
+const cacheTtlSeconds = ref(initial.cacheTtlSeconds)
+
 const project = ref<GeneratedProject | null>(null)
 const selectedPath = ref("")
 const error = ref<ParseError | null>(null)
@@ -45,15 +100,44 @@ const pending = ref(false)
 const copied = ref("")
 const exporting = ref(false)
 const exportMsg = ref("")
+// Selected tables; set to all tables on each generate.
+const selectedTables = ref<Set<string>>(new Set())
 
-interface ExportResult {
-  conflicts: string[]
-  error: string | null
-}
-
-const selectedFile = computed(() =>
-  project.value?.files.find((f) => f.path === selectedPath.value) ?? null,
+// Persist every option on change so a restart restores them.
+watch(
+  [ddl, modulePath, dialect, tinyintAsBool, cacheEnabled, cacheTtlSeconds],
+  () => {
+    const state: PersistedState = {
+      ddl: ddl.value,
+      modulePath: modulePath.value,
+      dialect: dialect.value,
+      tinyintAsBool: tinyintAsBool.value,
+      cacheEnabled: cacheEnabled.value,
+      cacheTtlSeconds: cacheTtlSeconds.value,
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  },
+  { deep: true },
 )
+
+const visibleFiles = computed(() =>
+  project.value?.files.filter((f) => selectedTables.value.has(f.table)) ?? [],
+)
+
+const selectedFile = computed(
+  () => visibleFiles.value.find((f) => f.path === selectedPath.value) ?? null,
+)
+
+function toggleTable(table: string) {
+  const next = new Set(selectedTables.value)
+  if (next.has(table)) next.delete(table)
+  else next.add(table)
+  selectedTables.value = next
+  // Keep preview pointed at a visible file.
+  if (!visibleFiles.value.some((f) => f.path === selectedPath.value)) {
+    selectedPath.value = visibleFiles.value[0]?.path ?? ""
+  }
+}
 
 async function generate() {
   pending.value = true
@@ -72,6 +156,8 @@ async function generate() {
         tinyintAsBool: tinyintAsBool.value,
       },
     })
+    // Fresh generation: every table selected by default.
+    selectedTables.value = new Set(project.value.tables)
     selectedPath.value = project.value.files[0]?.path ?? ""
   } catch (cause) {
     error.value = cause as ParseError
@@ -95,7 +181,7 @@ async function exportToDir() {
 
   exporting.value = true
   exportMsg.value = ""
-  const files = project.value.files
+  const files = visibleFiles.value
   try {
     let result = await invoke<ExportResult>("export_project", { dir, files, overwrite: false })
     if (result.conflicts.length) {
@@ -120,7 +206,7 @@ async function exportToDir() {
 }
 
 const allContent = computed(() =>
-  project.value?.files.map((f) => `// ==== ${f.path} ====\n${f.content}`).join("\n") ?? "",
+  visibleFiles.value.map((f) => `// ==== ${f.path} ====\n${f.content}`).join("\n"),
 )
 </script>
 
@@ -201,7 +287,7 @@ const allContent = computed(() =>
           </div>
           <div class="flex items-center gap-2 border-b border-border px-3 py-2">
             <span class="text-xs text-muted-foreground">
-              {{ project.files.length }} files
+              {{ visibleFiles.length }} / {{ project.files.length }} files
             </span>
             <Button
               size="sm"
@@ -222,9 +308,25 @@ const allContent = computed(() =>
               {{ exportMsg }}
             </span>
           </div>
+          <div class="flex items-center gap-3 border-b border-border px-3 py-1.5 text-sm">
+            <span class="text-xs font-medium text-muted-foreground">Tables</span>
+            <label
+              v-for="t in project.tables"
+              :key="t"
+              class="flex items-center gap-1 text-xs text-muted-foreground"
+            >
+              <input
+                type="checkbox"
+                class="accent-foreground"
+                :checked="selectedTables.has(t)"
+                @change="toggleTable(t)"
+              />
+              {{ t }}
+            </label>
+          </div>
           <div class="flex min-h-0 flex-1">
             <ul class="w-56 shrink-0 overflow-y-auto border-r border-border py-1 text-sm">
-              <li v-for="f in project.files" :key="f.path">
+              <li v-for="f in visibleFiles" :key="f.path">
                 <button
                   class="w-full truncate px-3 py-1.5 text-left hover:bg-accent"
                   :class="{ 'bg-accent font-medium': f.path === selectedPath }"
