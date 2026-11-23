@@ -12,10 +12,10 @@ import (
 
 // OrderItemRepository is the persistence boundary for the order_items table.
 type OrderItemRepository interface {
-	Create(ctx context.Context, m *OrderItem) error
-	GetByID(ctx context.Context, orderId int64, itemId int64) (*OrderItem, error)
-	List(ctx context.Context, page int, pageSize int) ([]*OrderItem, int64, error)
-	Update(ctx context.Context, m *OrderItem) error
+	Create(ctx context.Context, m *model.OrderItem) error
+	GetByID(ctx context.Context, orderId int64, itemId int64) (*model.OrderItem, error)
+	List(ctx context.Context, page int, pageSize int) ([]*model.OrderItem, int64, error)
+	Update(ctx context.Context, m *model.OrderItem) error
 	Delete(ctx context.Context, orderId int64, itemId int64) error
 }
 
@@ -29,12 +29,12 @@ func NewOrderItemRepository(db *gorm.DB) OrderItemRepository {
 	return &orderitemRepository{db: db}
 }
 
-func (r *orderitemRepository) Create(ctx context.Context, m *OrderItem) error {
+func (r *orderitemRepository) Create(ctx context.Context, m *model.OrderItem) error {
 	return r.db.WithContext(ctx).Create(m).Error
 }
 
-func (r *orderitemRepository) GetByID(ctx context.Context, orderId int64, itemId int64) (*OrderItem, error) {
-	var m OrderItem
+func (r *orderitemRepository) GetByID(ctx context.Context, orderId int64, itemId int64) (*model.OrderItem, error) {
+	var m model.OrderItem
 	err := r.db.WithContext(ctx).Where("order_id = ? AND item_id = ?", orderId, itemId).First(&m).Error
 	if err != nil {
 		return nil, err
@@ -42,21 +42,21 @@ func (r *orderitemRepository) GetByID(ctx context.Context, orderId int64, itemId
 	return &m, nil
 }
 
-func (r *orderitemRepository) List(ctx context.Context, page int, pageSize int) ([]*OrderItem, int64, error) {
+func (r *orderitemRepository) List(ctx context.Context, page int, pageSize int) ([]*model.OrderItem, int64, error) {
 	var total int64
-	if err := r.db.WithContext(ctx).Model(&OrderItem{}).Count(&total).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&model.OrderItem{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	var items []*OrderItem
+	var items []*model.OrderItem
 	offset := (page - 1) * pageSize
 	err := r.db.WithContext(ctx).Order("order_id,item_id").Offset(offset).Limit(pageSize).Find(&items).Error
 	return items, total, err
 }
 
-func (r *orderitemRepository) Update(ctx context.Context, m *OrderItem) error {
+func (r *orderitemRepository) Update(ctx context.Context, m *model.OrderItem) error {
 	return r.db.WithContext(ctx).Save(m).Error
 }
 
 func (r *orderitemRepository) Delete(ctx context.Context, orderId int64, itemId int64) error {
-	return r.db.WithContext(ctx).Where("order_id = ? AND item_id = ?", orderId, itemId).Delete(&OrderItem{}).Error
+	return r.db.WithContext(ctx).Where("order_id = ? AND item_id = ?", orderId, itemId).Delete(&model.OrderItem{}).Error
 }

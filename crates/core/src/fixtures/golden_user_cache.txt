@@ -29,15 +29,15 @@ func NewUserRepoWithCache(repo repository.UserRepository, rdb *redis.Client) rep
 	return &userCacheRepo{repo: repo, rdb: rdb}
 }
 
-func (c *userCacheRepo) Create(ctx context.Context, m *User) error {
+func (c *userCacheRepo) Create(ctx context.Context, m *model.User) error {
 	return c.repo.Create(ctx, m)
 }
 
-func (c *userCacheRepo) GetByID(ctx context.Context, id int64) (*User, error) {
+func (c *userCacheRepo) GetByID(ctx context.Context, id int64) (*model.User, error) {
 	key := fmt.Sprintf("users:%v", id)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == nil {
-		var m User
+		var m model.User
 		if json.Unmarshal(data, &m) == nil {
 			return &m, nil
 		}
@@ -52,11 +52,11 @@ func (c *userCacheRepo) GetByID(ctx context.Context, id int64) (*User, error) {
 	return m, nil
 }
 
-func (c *userCacheRepo) List(ctx context.Context, page int, pageSize int) ([]*User, int64, error) {
+func (c *userCacheRepo) List(ctx context.Context, page int, pageSize int) ([]*model.User, int64, error) {
 	return c.repo.List(ctx, page, pageSize)
 }
 
-func (c *userCacheRepo) Update(ctx context.Context, m *User) error {
+func (c *userCacheRepo) Update(ctx context.Context, m *model.User) error {
 	err := c.repo.Update(ctx, m)
 	if err == nil {
 		key := fmt.Sprintf("users:%v", m.Id)

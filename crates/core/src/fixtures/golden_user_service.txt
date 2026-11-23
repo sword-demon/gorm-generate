@@ -12,10 +12,10 @@ import (
 // UserService is the business-layer boundary for the users table. Fill in
 // real business rules; the generated methods are thin passthroughs.
 type UserService interface {
-	Create(ctx context.Context, m *User) error
-	GetByID(ctx context.Context, id int64) (*User, error)
-	List(ctx context.Context, page int, pageSize int) ([]*User, int64, error)
-	Update(ctx context.Context, m *User) error
+	Create(ctx context.Context, m *model.User) error
+	GetByID(ctx context.Context, id int64) (*model.User, error)
+	List(ctx context.Context, page int, pageSize int) ([]*model.User, int64, error)
+	Update(ctx context.Context, m *model.User) error
 	Delete(ctx context.Context, id int64) error
 }
 
@@ -29,19 +29,19 @@ func NewUserService(repo repository.UserRepository) UserService {
 	return &userService{repo: repo}
 }
 
-func (s *userService) Create(ctx context.Context, m *User) error {
+func (s *userService) Create(ctx context.Context, m *model.User) error {
 	return s.repo.Create(ctx, m)
 }
 
-func (s *userService) GetByID(ctx context.Context, id int64) (*User, error) {
+func (s *userService) GetByID(ctx context.Context, id int64) (*model.User, error) {
 	return s.repo.GetByID(ctx, id)
 }
 
-func (s *userService) List(ctx context.Context, page int, pageSize int) ([]*User, int64, error) {
+func (s *userService) List(ctx context.Context, page int, pageSize int) ([]*model.User, int64, error) {
 	return s.repo.List(ctx, page, pageSize)
 }
 
-func (s *userService) Update(ctx context.Context, m *User) error {
+func (s *userService) Update(ctx context.Context, m *model.User) error {
 	return s.repo.Update(ctx, m)
 }
 

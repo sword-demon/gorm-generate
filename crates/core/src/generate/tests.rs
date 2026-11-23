@@ -200,15 +200,15 @@ fn single_pk_table_generates_repository_and_service() {
 
     let repo = &result.files.iter().find(|f| f.path.ends_with("user_repo.go")).unwrap().content;
     assert!(repo.contains("type UserRepository interface {"), "repo interface");
-    assert!(repo.contains("Create(ctx context.Context, m *User) error"));
-    assert!(repo.contains("GetByID(ctx context.Context, id int64) (*User, error)"));
-    assert!(repo.contains("List(ctx context.Context, page int, pageSize int) ([]*User, int64, error)"));
-    assert!(repo.contains("Update(ctx context.Context, m *User) error"));
+    assert!(repo.contains("Create(ctx context.Context, m *model.User) error"));
+    assert!(repo.contains("GetByID(ctx context.Context, id int64) (*model.User, error)"));
+    assert!(repo.contains("List(ctx context.Context, page int, pageSize int) ([]*model.User, int64, error)"));
+    assert!(repo.contains("Update(ctx context.Context, m *model.User) error"));
     assert!(repo.contains("Delete(ctx context.Context, id int64) error"));
     assert!(repo.contains("type userRepository struct"), "repo impl");
     assert!(repo.contains("func NewUserRepository(db *gorm.DB) UserRepository"), "repo constructor");
     assert!(repo.contains("Where(\"id = ?\", id).First(&m)"), "Where binds PK args");
-    assert!(repo.contains("Where(\"id = ?\", id).Delete(&User{})"), "Delete binds PK args");
+    assert!(repo.contains("Where(\"id = ?\", id).Delete(&model.User{})"), "Delete binds PK args");
 
     let svc = &result.files.iter().find(|f| f.path.ends_with("user_service.go")).unwrap().content;
     assert!(svc.contains("type UserService interface {"), "service interface");
@@ -224,7 +224,7 @@ fn composite_pk_generates_multi_param_methods() {
     let result = generate(&request(ddl)).expect("should generate");
     let repo = &result.files.iter().find(|f| f.path.ends_with("order_item_repo.go")).unwrap().content;
     assert!(
-        repo.contains("GetByID(ctx context.Context, orderId int64, itemId int64) (*OrderItem, error)"),
+        repo.contains("GetByID(ctx context.Context, orderId int64, itemId int64) (*model.OrderItem, error)"),
         "multi-param GetByID, got: {repo}"
     );
     assert!(
@@ -546,3 +546,4 @@ const GOLDEN_CACHE: &[(&str, &str)] = &[
     ("internal/service/user_service.go", include_str!("../fixtures/golden_user_service.txt")),
     ("internal/cache/user_cache.go", include_str!("../fixtures/golden_user_cache.txt")),
 ];
+

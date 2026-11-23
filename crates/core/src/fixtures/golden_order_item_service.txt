@@ -12,10 +12,10 @@ import (
 // OrderItemService is the business-layer boundary for the order_items table. Fill in
 // real business rules; the generated methods are thin passthroughs.
 type OrderItemService interface {
-	Create(ctx context.Context, m *OrderItem) error
-	GetByID(ctx context.Context, orderId int64, itemId int64) (*OrderItem, error)
-	List(ctx context.Context, page int, pageSize int) ([]*OrderItem, int64, error)
-	Update(ctx context.Context, m *OrderItem) error
+	Create(ctx context.Context, m *model.OrderItem) error
+	GetByID(ctx context.Context, orderId int64, itemId int64) (*model.OrderItem, error)
+	List(ctx context.Context, page int, pageSize int) ([]*model.OrderItem, int64, error)
+	Update(ctx context.Context, m *model.OrderItem) error
 	Delete(ctx context.Context, orderId int64, itemId int64) error
 }
 
@@ -29,19 +29,19 @@ func NewOrderItemService(repo repository.OrderItemRepository) OrderItemService {
 	return &orderitemService{repo: repo}
 }
 
-func (s *orderitemService) Create(ctx context.Context, m *OrderItem) error {
+func (s *orderitemService) Create(ctx context.Context, m *model.OrderItem) error {
 	return s.repo.Create(ctx, m)
 }
 
-func (s *orderitemService) GetByID(ctx context.Context, orderId int64, itemId int64) (*OrderItem, error) {
+func (s *orderitemService) GetByID(ctx context.Context, orderId int64, itemId int64) (*model.OrderItem, error) {
 	return s.repo.GetByID(ctx, orderId, itemId)
 }
 
-func (s *orderitemService) List(ctx context.Context, page int, pageSize int) ([]*OrderItem, int64, error) {
+func (s *orderitemService) List(ctx context.Context, page int, pageSize int) ([]*model.OrderItem, int64, error) {
 	return s.repo.List(ctx, page, pageSize)
 }
 
-func (s *orderitemService) Update(ctx context.Context, m *OrderItem) error {
+func (s *orderitemService) Update(ctx context.Context, m *model.OrderItem) error {
 	return s.repo.Update(ctx, m)
 }
 
