@@ -3,12 +3,14 @@
 //! Parsing and code generation live here, independent of Tauri, so the core
 //! stays testable without a webview.
 
+pub mod export;
 pub mod generate;
 pub mod layers;
 pub mod naming;
 pub mod parser;
 pub mod types;
 
+pub use export::{export_project, ExportError};
 pub use generate::{generate, GeneratedFile, GeneratedProject, GenerateRequest, ParseError};
 
 /// Liveness probe used to verify the IPC path in the scaffold.

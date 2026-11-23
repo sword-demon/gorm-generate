@@ -24,7 +24,7 @@ struct GeneratedProjectPayload {
     warnings: Vec<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct GeneratedFilePayload {
     path: String,
     content: String,
@@ -86,9 +86,52 @@ struct ParseErrorPayload {
     snippet: String,
 }
 
+/// Result of an export attempt. `conflicts` is non-empty when existing files
+/// blocked the write and the caller must confirm before retrying; otherwise
+/// `error` carries a readable message.
+#[derive(Serialize)]
+struct ExportResultPayload {
+    conflicts: Vec<String>,
+    error: Option<String>,
+}
+
+/// Thin wrapper over the core `export_project` seam. Writes under `dir`;
+/// rejects absolute/`..` paths; refuses to clobber existing files unless
+/// `overwrite` is true.
+#[tauri::command]
+fn export_project(
+    dir: String,
+    files: Vec<GeneratedFilePayload>,
+    overwrite: bool,
+) -> ExportResultPayload {
+    let generated: Vec<gorm_generate_core::GeneratedFile> = files
+        .into_iter()
+        .map(|f| gorm_generate_core::GeneratedFile {
+            path: f.path,
+            content: f.content,
+        })
+        .collect();
+
+    match gorm_generate_core::export_project(std::path::Path::new(&dir), &generated, overwrite) {
+        Ok(()) => ExportResultPayload {
+            conflicts: Vec::new(),
+            error: None,
+        },
+        Err(gorm_generate_core::ExportError::Conflicts(paths)) => ExportResultPayload {
+            conflicts: paths,
+            error: None,
+        },
+        Err(other) => ExportResultPayload {
+            conflicts: Vec::new(),
+            error: Some(other.to_string()),
+        },
+    }
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![ping, generate_project])
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![ping, generate_project, export_project])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

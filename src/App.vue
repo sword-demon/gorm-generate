@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core"
+import { open } from "@tauri-apps/plugin-dialog"
 import { computed, ref } from "vue"
 
 import { Button } from "@/components/ui/button"
@@ -42,6 +43,13 @@ const selectedPath = ref("")
 const error = ref<ParseError | null>(null)
 const pending = ref(false)
 const copied = ref("")
+const exporting = ref(false)
+const exportMsg = ref("")
+
+interface ExportResult {
+  conflicts: string[]
+  error: string | null
+}
 
 const selectedFile = computed(() =>
   project.value?.files.find((f) => f.path === selectedPath.value) ?? null,
@@ -78,6 +86,37 @@ async function copy(text: string, label: string) {
   setTimeout(() => {
     if (copied.value === label) copied.value = ""
   }, 1500)
+}
+
+async function exportToDir() {
+  if (!project.value) return
+  const dir = await open({ directory: true, multiple: false, title: "Export to directory" })
+  if (!dir) return
+
+  exporting.value = true
+  exportMsg.value = ""
+  const files = project.value.files
+  try {
+    let result = await invoke<ExportResult>("export_project", { dir, files, overwrite: false })
+    if (result.conflicts.length) {
+      const proceed = window.confirm(
+        `${result.conflicts.length} file(s) already exist and will be overwritten:\n\n` +
+          result.conflicts.join("\n"),
+      )
+      if (!proceed) {
+        exportMsg.value = "Export cancelled"
+        return
+      }
+      result = await invoke<ExportResult>("export_project", { dir, files, overwrite: true })
+    }
+    exportMsg.value = result.error
+      ? `Export failed: ${result.error}`
+      : `Exported ${files.length} file(s) to ${dir}`
+  } catch (cause) {
+    exportMsg.value = `Export failed: ${String(cause)}`
+  } finally {
+    exporting.value = false
+  }
 }
 
 const allContent = computed(() =>
@@ -171,6 +210,17 @@ const allContent = computed(() =>
             >
               {{ copied === "all" ? "Copied!" : "Copy all" }}
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              :disabled="exporting"
+              @click="exportToDir"
+            >
+              {{ exporting ? "Exporting..." : "Export to directory" }}
+            </Button>
+            <span v-if="exportMsg" class="truncate text-xs text-muted-foreground">
+              {{ exportMsg }}
+            </span>
           </div>
           <div class="flex min-h-0 flex-1">
             <ul class="w-56 shrink-0 overflow-y-auto border-r border-border py-1 text-sm">
