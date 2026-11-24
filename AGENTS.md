@@ -6,7 +6,7 @@ Issues live as markdown files under `.scratch/<feature>/` (local tracker). See `
 
 ### Triage labels
 
-Default five role strings, recorded in each issue's `Status:` line. See `docs/agents/triage-labels.md`.
+Default five role strings, recorded in each issue's `Status:` line — the single state field, which also carries the wayfinding lifecycle values `claimed`/`resolved` — alongside a `Category:` line for `bug`/`enhancement`. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

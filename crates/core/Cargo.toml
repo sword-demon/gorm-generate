@@ -5,3 +5,4 @@ edition.workspace = true
 
 [dependencies]
 sqlparser = "0.64"
+tempfile = "3"

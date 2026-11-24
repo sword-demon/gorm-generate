@@ -1,6 +1,6 @@
 # Spec: GORM 代码生成器 (SQL DDL → Go 分层代码)
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 
@@ -56,11 +56,11 @@ Go 开发者拿到建表语句后，需要手写模型、仓储、服务接口�
 - **输入**: DDL 文本 + 方言枚举（MySQL | PostgreSQL）。只处理 `CREATE TABLE` 与 PG 的 `COMMENT ON`；其他语句忽略并计入警告。解析失败返回结构化错误（语句序号 + 片段）。
 - **生成核心 API**: `generate(request) -> GeneratedProject`。请求含 DDL 文本、方言、module path、缓存开关、缓存 TTL、`tinyint(1)` 开关；结果含文件集合（相对路径 + 内容）、表清单、警告列表。纯函数、无 IO、同输入字节级同输出。
 - **产物目录**: `internal/model`、`internal/repository`、`internal/service`、`internal/cache`（仅缓存开启时）。文件按表命名：`user.go`、`user_repo.go`、`user_service.go`、`user_cache.go`；接口与实现在同一文件。module path 决定 import 前缀。
-- **模型规则**: 严格按 DDL，不嵌 `gorm.Model`，不添加 DDL 之外的字段；总是生成 `TableName()`；gorm tag 仅保留 `column`/`primaryKey`/`autoIncrement`/`not null`；JSON tag 使用列名原样；不生成外键关联字段；不生成 `index`/`uniqueIndex`/`default`/`type`/`size` tag（DDL 是索引与默认值的事实源）。
+- **模型规则**: 严格按 DDL，不嵌 `gorm.Model`，不添加 DDL 之外的字段；总是生成 `TableName()`；gorm tag 仅保留 `column`/`primaryKey`/`autoIncrement`/`not null`，生成列（`GENERATED ... AS (...)`）另加 `->`（只读）；JSON tag 使用列名原样；不生成外键关联字段；不生成 `index`/`uniqueIndex`/`default`/`type`/`size` tag（DDL 是索引与默认值的事实源）。
 - **类型映射**: 可空列用指针（`[]byte` 与 `json.RawMessage` 例外：nil 已表达 null，不再取指针）；`decimal`/`numeric` → `string`；`json`/`jsonb` → `json.RawMessage`；`enum`/`set` → `string`；`blob`/`binary`/`bytea` → `[]byte`；时间类型 → `time.Time`；MySQL unsigned 按宽度映射 `uint8/16/32/64`；未知类型 → `any` + 警告。`tinyint(1)` 默认 `int8`/`uint8`，开关打开后为 `bool`。`deleted_at` → `gorm.DeletedAt`（软删除）。`SERIAL`/`BIGSERIAL`/`SMALLSERIAL`/`GENERATED ... AS IDENTITY` → `autoIncrement`。
 - **仓储契约**: `Create(ctx, *T) error`；`GetByID(ctx, pk...) (*T, error)`；`List(ctx, page, pageSize) ([]*T, int64, error)`（按主键升序，返回总数）；`Update(ctx, *T) error`（全量 Save）；`Delete(ctx, pk...) error`。主键参数类型跟随 DDL；复合主键生成多参数；查不到原样返回 `gorm.ErrRecordNotFound`。无主键表不生成仓储/服务/缓存。
 - **服务契约**: 与仓储完全同签名的薄透传；不生成 DTO；构造函数注入仓储接口。
-- **缓存契约**: 遵循 ADR-0002。仅缓存 `GetByID`，key 为 `表名:主键值...`；`Update`/`Delete` 删除 key；`List`/`Create` 不处理缓存；使用 `go-redis/v9` + `encoding/json`；TTL 在生成时成为常量；任何缓存错误降级查库且不向上抛；生成缓存装饰器与 `NewXxxRepoWithCache(repo, rdb, ttl)` 工厂；开关关闭时不生成 cache 包。服务只依赖仓储接口，注入哪个实现由调用方决定。
+- **缓存契约**: 遵循 ADR-0002。仅缓存 `GetByID`，key 为 `表名:主键值...`；`Update`/`Delete` 删除 key；`List`/`Create` 不处理缓存；使用 `go-redis/v9` + `encoding/json`；TTL 在生成时成为常量；任何缓存错误降级查库且不向上抛；生成缓存装饰器与 `NewXxxRepoWithCache(repo, rdb)` 工厂，TTL 以 `<Struct>CacheTTL` 包级常量固化在生成物中；开关关闭时不生成 cache 包。服务只依赖仓储接口，注入哪个实现由调用方决定。
 - **表选择**: 生成始终覆盖全部表；界面上的表勾选只过滤预览与导出，不触发重新生成。
 - **导出契约**: 前端用 dialog 插件选择目录；写盘由 Rust 命令完成（`std::fs`），不引入 fs 插件；目标存在同名文件时先经用户确认，确认后覆盖。
 - **界面形态**: 单页。顶部工具栏（方言、module path、缓存开关、TTL、`tinyint(1)` 开关、生成按钮）；左侧 SQL 输入；右侧 Tabs（文件树 / 只读高亮预览）；表清单勾选；复制与导出；解析错误用 toast，警告用 Badge；localStorage 记住输入与选项。
@@ -88,3 +88,4 @@ Go 开发者拿到建表语句后，需要手写模型、仓储、服务接口�
 - 参考: GORM 文档、`gorm.io/cli`、gormt；设计决策见 `docs/adr/0001`、`docs/adr/0002` 与 `GLOSSARY.md`。
 - sqlparser 注意点: `AUTO_INCREMENT` 以 DialectSpecific token 形式出现，需特判；SQL 文本注释会被丢弃；表级 `PARTITION BY` 不被解析。
 - 生成产物依赖: `gorm.io/gorm`；缓存开启时另需 `github.com/redis/go-redis/v9`。界面结果区展示对应 `go get` 提示。
+- 已知缺口: User Story 26（解析错误定位到第几条语句并显示片段）部分实现 —— 语句级解析错误上报真实序号并附出错语句片段（最多 500 字符）；`try_with_sql` 分词错误仍固定上报第 1 条，语义校验错误（module path、标识符、主键）以序号 0 表示非解析错误。前端已按 camelCase `statementIndex` 消费该字段。

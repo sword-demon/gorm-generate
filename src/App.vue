@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core"
-import { open } from "@tauri-apps/plugin-dialog"
-import { computed, ref, watch } from "vue"
+import { open, confirm } from "@tauri-apps/plugin-dialog"
+import { computed, ref, watch, onBeforeUnmount } from "vue"
 
 import CodePreview from "@/components/CodePreview.vue"
 import SqlEditor from "@/components/SqlEditor.vue"
@@ -20,7 +20,7 @@ interface GeneratedProject {
 }
 
 interface ParseError {
-  statement_index: number
+  statementIndex: number
   snippet: string
 }
 
@@ -93,7 +93,7 @@ const modulePath = ref(initial.modulePath)
 const dialect = ref<"mysql" | "postgres">(initial.dialect)
 const tinyintAsBool = ref(initial.tinyintAsBool)
 const cacheEnabled = ref(initial.cacheEnabled)
-const cacheTtlSeconds = ref(initial.cacheTtlSeconds)
+const cacheTtlSeconds = ref<number | string>(initial.cacheTtlSeconds)
 
 const project = ref<GeneratedProject | null>(null)
 const selectedPath = ref("")
@@ -107,19 +107,34 @@ const toastDismissed = ref(false)
 // Selected tables; set to all tables on each generate.
 const selectedTables = ref<Set<string>>(new Set())
 
-// Persist every option on change so a restart restores them.
+const persistenceError = ref("")
+const copyError = ref("")
+let persistTimer: ReturnType<typeof setTimeout> | undefined
+function saveState() {
+  clearTimeout(persistTimer)
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      ddl: ddl.value, modulePath: modulePath.value, dialect: dialect.value,
+      tinyintAsBool: tinyintAsBool.value, cacheEnabled: cacheEnabled.value,
+      cacheTtlSeconds: cacheTtlSeconds.value,
+    }))
+    persistenceError.value = ""
+  } catch {
+    persistenceError.value = "Settings could not be saved. Keep a copy of your DDL before closing."
+  }
+}
+function flushState() { saveState() }
+window.addEventListener("pagehide", flushState)
+onBeforeUnmount(() => {
+  saveState()
+  window.removeEventListener("pagehide", flushState)
+})
+// Debounce synchronous storage writes during typing.
 watch(
   [ddl, modulePath, dialect, tinyintAsBool, cacheEnabled, cacheTtlSeconds],
   () => {
-    const state: PersistedState = {
-      ddl: ddl.value,
-      modulePath: modulePath.value,
-      dialect: dialect.value,
-      tinyintAsBool: tinyintAsBool.value,
-      cacheEnabled: cacheEnabled.value,
-      cacheTtlSeconds: cacheTtlSeconds.value,
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    clearTimeout(persistTimer)
+    persistTimer = setTimeout(saveState, 300)
   },
   { deep: true },
 )
@@ -144,20 +159,31 @@ function toggleTable(table: string) {
 }
 
 async function generate() {
+  // An export writes files for the current project; regenerating underneath it
+  // would make its late status message describe a project that no longer shows.
+  if (pending.value || exporting.value) return
   pending.value = true
   project.value = null
   selectedPath.value = ""
   error.value = null
   copied.value = ""
+  exportMsg.value = ""
+  copyError.value = ""
   toastDismissed.value = false
   try {
+    if (!modulePath.value || modulePath.value.split("/").some((part) => !part || part === "." || part === ".." || part.startsWith(".") || part.endsWith(".")) || !/^[A-Za-z0-9._~/-]+$/.test(modulePath.value)) {
+      throw new Error("Enter a valid Go module path without spaces, quotes or traversal.")
+    }
+    if (cacheEnabled.value && (typeof cacheTtlSeconds.value !== "number" || !Number.isInteger(cacheTtlSeconds.value) || cacheTtlSeconds.value < 1 || cacheTtlSeconds.value > 4294967295)) {
+      throw new Error("Cache TTL must be an integer from 1 to 4294967295 seconds.")
+    }
     project.value = await invoke<GeneratedProject>("generate_project", {
       request: {
         ddl: ddl.value,
         dialect: dialect.value,
         modulePath: modulePath.value,
         cacheEnabled: cacheEnabled.value,
-        cacheTtlSeconds: cacheTtlSeconds.value,
+        cacheTtlSeconds: cacheEnabled.value ? cacheTtlSeconds.value : 300,
         tinyintAsBool: tinyintAsBool.value,
       },
     })
@@ -177,33 +203,38 @@ function toParseError(cause: unknown): ParseError {
   if (cause && typeof cause === "object" && "snippet" in cause) {
     const c = cause as Partial<ParseError>
     return {
-      statement_index: typeof c.statement_index === "number" ? c.statement_index : 0,
+      statementIndex: typeof c.statementIndex === "number" ? c.statementIndex : 0,
       snippet: typeof c.snippet === "string" ? c.snippet : String(cause),
     }
   }
-  return { statement_index: 0, snippet: String(cause) }
+  return { statementIndex: 0, snippet: String(cause) }
 }
 
 async function copy(text: string, label: string) {
-  await navigator.clipboard.writeText(text)
-  copied.value = label
-  setTimeout(() => {
-    if (copied.value === label) copied.value = ""
-  }, 1500)
+  copyError.value = ""
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard is unavailable")
+    await navigator.clipboard.writeText(text)
+    copied.value = label
+    setTimeout(() => {
+      if (copied.value === label) copied.value = ""
+    }, 1500)
+  } catch (cause) {
+    copyError.value = `Copy failed: ${String(cause)}`
+  }
 }
 
 async function exportToDir() {
-  if (!project.value) return
-  const dir = await open({ directory: true, multiple: false, title: "Export to directory" })
-  if (!dir) return
-
+  if (!project.value || exporting.value || !visibleFiles.value.length) return
   exporting.value = true
   exportMsg.value = ""
   const files = visibleFiles.value
   try {
+    const dir = await open({ directory: true, multiple: false, title: "Export to directory" })
+    if (!dir) return
     let result = await invoke<ExportResult>("export_project", { dir, files, overwrite: false })
     if (result.conflicts.length) {
-      const proceed = window.confirm(
+      const proceed = await confirm(
         `${result.conflicts.length} file(s) already exist and will be overwritten:\n\n` +
           result.conflicts.join("\n"),
       )
@@ -253,10 +284,10 @@ function dismissToast() {
     >
       <div class="min-w-0">
         <div class="font-medium">
-          <template v-if="error.statement_index">
-            Parse error in statement #{{ error.statement_index }}
+          <template v-if="error.statementIndex">
+            Parse error in statement #{{ error.statementIndex }}
           </template>
-          <template v-else>Parse error</template>
+          <template v-else>Generation failed</template>
         </div>
         <pre class="mt-1 whitespace-pre-wrap break-words font-mono text-xs">{{ error.snippet }}</pre>
       </div>
@@ -306,11 +337,14 @@ function dismissToast() {
           class="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm"
         />
       </label>
-      <Button :disabled="pending" @click="generate">
+      <Button :disabled="pending || exporting" @click="generate">
         {{ pending ? "Generating..." : "Generate" }}
       </Button>
     </header>
 
+    <div v-if="persistenceError || copyError" role="alert" class="px-3 py-2 text-sm text-destructive">
+      {{ persistenceError || copyError }}
+    </div>
     <div class="flex min-h-0 flex-1">
       <section class="flex w-1/2 min-w-0 flex-col border-r border-border">
         <div class="px-3 pt-2 text-xs font-medium text-muted-foreground">
@@ -324,8 +358,8 @@ function dismissToast() {
           v-if="error"
           class="m-3 rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive"
         >
-          <template v-if="error.statement_index">
-            Parse error in statement #{{ error.statement_index }}:
+          <template v-if="error.statementIndex">
+            Parse error in statement #{{ error.statementIndex }}:
           </template>
           {{ error.snippet }}
         </div>
@@ -343,7 +377,7 @@ function dismissToast() {
               </span>
             </summary>
             <ul class="list-disc space-y-1 px-6 pb-2">
-              <li v-for="w in project.warnings" :key="w">{{ w }}</li>
+              <li v-for="(w, index) in project.warnings" :key="index">{{ w }}</li>
             </ul>
           </details>
           <div class="flex items-center gap-2 border-b border-border px-3 py-2">
@@ -360,12 +394,12 @@ function dismissToast() {
             <Button
               size="sm"
               variant="outline"
-              :disabled="exporting"
+              :disabled="exporting || !visibleFiles.length"
               @click="exportToDir"
             >
               {{ exporting ? "Exporting..." : "Export to directory" }}
             </Button>
-            <span v-if="exportMsg" class="truncate text-xs text-muted-foreground">
+            <span v-if="exportMsg" :title="exportMsg" class="truncate text-xs text-muted-foreground">
               {{ exportMsg }}
             </span>
           </div>

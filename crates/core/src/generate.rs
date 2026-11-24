@@ -2,8 +2,8 @@
 
 use crate::layers;
 use crate::naming::{field_name, snake_case, struct_name};
-use crate::parser::{self, classify_mysql_type, is_auto_increment, is_identity, is_serial};
-use crate::types::map_type;
+use crate::parser::{self, is_auto_increment, is_identity, is_serial, is_generated_expression};
+use crate::types::column_type;
 
 #[cfg(test)]
 mod tests;
@@ -52,13 +52,27 @@ pub struct ParseError {
 
 /// Generates the layered Go project from a DDL script. No IO.
 pub fn generate(request: &GenerateRequest) -> Result<GeneratedProject, ParseError> {
+    validate_request(request)?;
     let script = parser::parse_ddl(&request.ddl, request.dialect)?;
 
     let mut files = Vec::new();
     let mut table_names = Vec::new();
     let mut warnings = Vec::new();
 
+    // File paths and unexported impl type names derive from the struct name
+    // differently: `snake_case` keeps word boundaries, the impl type lowercases
+    // the whole name. Both must be unique or two tables collide in one package.
+    let mut file_keys = std::collections::HashSet::new();
+    let mut type_keys = std::collections::HashSet::new();
     for table in &script.tables {
+        validate_table(table)?;
+        let file_key = snake_case(&struct_name(&table.name));
+        // Only tables with a primary key get repo/service/cache impl types.
+        let type_key = struct_name(&table.name).to_lowercase();
+        let has_layers = !table.primary_key.is_empty();
+        if !file_keys.insert(file_key) || (has_layers && !type_keys.insert(type_key)) {
+            return Err(invalid(format!("table `{}` conflicts with another generated type or path", table.name)));
+        }
         let (file, table_warnings) = render_model(table, request);
         warnings.extend(table_warnings);
         table_names.push(table.name.clone());
@@ -107,7 +121,6 @@ fn render_model(
     let mut needs_gorm_import = false;
 
     for col in &table.columns {
-        let (base, unsigned, width) = classify_mysql_type(&col.data_type);
 
         // A column is nullable unless declared NOT NULL. Primary keys are
         // never nullable regardless of declaration.
@@ -118,7 +131,7 @@ fn render_model(
         let is_pk = table.primary_key.iter().any(|pk| *pk == col.name.value);
         let nullable = !not_null && !is_pk;
 
-        let mapped = map_type(&base, width, unsigned, nullable, request.tinyint_as_bool);
+        let mapped = column_type(col, nullable, request.tinyint_as_bool, is_pk);
         if let Some(w) = mapped.warning {
             warnings.push(format!("{}: {}", table.name, w));
         }
@@ -132,6 +145,9 @@ fn render_model(
         if is_auto_increment(col) || is_serial(&col.data_type) || is_identity(col) {
             gorm_parts.push("autoIncrement".to_string());
         }
+        if is_generated_expression(col) {
+            gorm_parts.push("->".to_string());
+        }
         if !nullable {
             gorm_parts.push("not null".to_string());
         }
@@ -139,7 +155,7 @@ fn render_model(
 
         // Spec: deleted_at -> gorm.DeletedAt (soft delete). Overrides the
         // plain time.Time mapping; gorm tag stays structural only.
-        let go_type = if col.name.value.eq_ignore_ascii_case("deleted_at") {
+        let go_type = if col.name.value.eq_ignore_ascii_case("deleted_at") && !is_pk {
             needs_gorm_import = true;
             "gorm.DeletedAt".to_string()
         } else {
@@ -217,4 +233,40 @@ fn render_model(
         },
         warnings,
     )
+}
+
+fn invalid(snippet: String) -> ParseError { ParseError { statement_index: 0, snippet } }
+
+fn validate_request(request: &GenerateRequest) -> Result<(), ParseError> {
+    let path = &request.module_path;
+    if path.is_empty() || path.split('/').any(|part| part.is_empty() || part == "." || part == ".." || part.ends_with('.') || part.starts_with('.'))
+        || !path.bytes().all(|c| c.is_ascii_alphanumeric() || b"-._~/".contains(&c)) {
+        return Err(invalid("module path must be a non-empty Go import path without spaces, quotes or traversal".into()));
+    }
+    if request.cache_enabled && request.cache_ttl_seconds == 0 {
+        return Err(invalid("cache TTL must be at least 1 second".into()));
+    }
+    Ok(())
+}
+
+fn validate_table(table: &parser::ParsedTable) -> Result<(), ParseError> {
+    fn safe_name(name: &str) -> bool {
+        !name.is_empty() && name.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') && !name.as_bytes()[0].is_ascii_digit()
+    }
+    // Validate the generated identifier too: `_1` is a legal SQL identifier
+    // that `pascal_case` sanitizes to `1`, which is not a Go identifier.
+    fn valid_ident_start(ident: &str) -> bool {
+        ident.bytes().next().is_some_and(|c| c.is_ascii_alphabetic() || c == b'_')
+    }
+    if !safe_name(&table.name) || !valid_ident_start(&struct_name(&table.name)) {
+        return Err(invalid(format!("unsupported table identifier `{}`; use letters, digits and underscores", table.name)));
+    }
+    let mut fields = std::collections::HashSet::new();
+    for col in &table.columns {
+        let field = field_name(&col.name.value);
+        if !safe_name(&col.name.value) || !valid_ident_start(&field) || field == "TableName" || !fields.insert(field.to_lowercase()) {
+            return Err(invalid(format!("column `{}` in table `{}` has an unsupported or conflicting Go field name", col.name.value, table.name)));
+        }
+    }
+    Ok(())
 }

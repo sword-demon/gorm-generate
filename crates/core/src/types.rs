@@ -66,3 +66,12 @@ pub fn map_type(
         warning: None,
     }
 }
+
+/// All layers use the same column mapping, including soft-delete overrides.
+pub fn column_type(col: &sqlparser::ast::ColumnDef, nullable: bool, tinyint_as_bool: bool, primary_key: bool) -> MappedType {
+    let (base, unsigned, width) = crate::parser::classify_mysql_type(&col.data_type);
+    if col.name.value.eq_ignore_ascii_case("deleted_at") && !primary_key {
+        return MappedType { go_type: "gorm.DeletedAt".into(), warning: None };
+    }
+    map_type(&base, width, unsigned, nullable, tinyint_as_bool)
+}

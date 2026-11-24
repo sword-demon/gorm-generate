@@ -7,7 +7,7 @@ Issues and specs for this repo live as markdown files in `.scratch/`.
 - One feature per directory: `.scratch/<feature-slug>/`
 - The spec is `.scratch/<feature-slug>/spec.md`
 - Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`, never a single combined tickets file
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
+- Each issue file records a `**Status:**` line near the top — the single state field, holding either a triage state role or the wayfinding lifecycle values `claimed`/`resolved` — plus a `**Category:**` line (`bug`/`enhancement`) for the kind of work; see `triage-labels.md` for the role strings
 - Comments and conversation history append to the bottom of the file under a `## Comments` heading
 
 ## When a skill says "publish to the issue tracker"
@@ -28,3 +28,11 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 - **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
 - **Claim**: set `Status: claimed` and save before any work.
 - **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
+
+## Rejected requests
+
+Requests that were considered and turned down are recorded in
+`.out-of-scope/<concept>.md` — one file per rejected concept, so a later
+triage pass recognizes a repeat instead of re-litigating it. The directory
+currently holds no records (the placeholder file is empty); the file format is
+described in the triage skill's `OUT-OF-SCOPE.md`.

@@ -42,7 +42,7 @@ fn ping() -> String {
 /// Thin wrapper over the core `generate` seam. Returns a structured error
 /// (statement index + snippet) instead of stringifying, so the UI can show
 /// actionable parse errors.
-#[tauri::command]
+#[tauri::command(async)]
 fn generate_project(request: GenerateRequestPayload) -> Result<GeneratedProjectPayload, ParseErrorPayload> {
     let dialect = match request.dialect.as_str() {
         "mysql" => gorm_generate_core::generate::Dialect::MySql,
@@ -102,7 +102,7 @@ struct ExportResultPayload {
 /// Thin wrapper over the core `export_project` seam. Writes under `dir`;
 /// rejects absolute/`..` paths; refuses to clobber existing files unless
 /// `overwrite` is true.
-#[tauri::command]
+#[tauri::command(async)]
 fn export_project(
     dir: String,
     files: Vec<GeneratedFilePayload>,

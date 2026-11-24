@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"gorm.io/gorm"
 
@@ -35,7 +36,7 @@ func (r *userRepository) Create(ctx context.Context, m *model.User) error {
 
 func (r *userRepository) GetByID(ctx context.Context, id int64) (*model.User, error) {
 	var m model.User
-	err := r.db.WithContext(ctx).Where("id = ?", id).First(&m).Error
+	err := r.db.WithContext(ctx).Where("\"id\" = ?", id).First(&m).Error
 	if err != nil {
 		return nil, err
 	}
@@ -43,13 +44,16 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*model.User, er
 }
 
 func (r *userRepository) List(ctx context.Context, page int, pageSize int) ([]*model.User, int64, error) {
+	if page < 1 || pageSize < 1 || page - 1 > int(^uint(0) >> 1) / pageSize {
+		return nil, 0, fmt.Errorf("page and pageSize must be positive and offset must fit int")
+	}
 	var total int64
 	if err := r.db.WithContext(ctx).Model(&model.User{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	var items []*model.User
 	offset := (page - 1) * pageSize
-	err := r.db.WithContext(ctx).Order("id").Offset(offset).Limit(pageSize).Find(&items).Error
+	err := r.db.WithContext(ctx).Order("\"id\"").Offset(offset).Limit(pageSize).Find(&items).Error
 	return items, total, err
 }
 
@@ -58,5 +62,5 @@ func (r *userRepository) Update(ctx context.Context, m *model.User) error {
 }
 
 func (r *userRepository) Delete(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.User{}).Error
+	return r.db.WithContext(ctx).Where("\"id\" = ?", id).Delete(&model.User{}).Error
 }

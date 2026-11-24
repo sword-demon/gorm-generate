@@ -22,7 +22,7 @@ impl std::fmt::Display for ExportError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ExportError::UnsafePath(path) => {
-                write!(f, "unsafe path (absolute or contains `..`): {path}")
+                write!(f, "unsafe export path: {path}")
             }
             ExportError::Conflicts(paths) => {
                 write!(f, "{} file(s) already exist", paths.len())
@@ -42,31 +42,79 @@ pub fn export_project(
     files: &[GeneratedFile],
     overwrite: bool,
 ) -> Result<(), ExportError> {
-    // Validate all paths before touching the filesystem so a bad path never
-    // leaves a half-written tree.
+    if !dir.is_absolute() {
+        return Err(ExportError::UnsafePath(dir.display().to_string()));
+    }
+    let mut seen = std::collections::HashSet::new();
     let mut targets = Vec::with_capacity(files.len());
     for file in files {
-        targets.push((safe_join(dir, &file.path)?, &file.content));
+        let path = safe_join(dir, &file.path)?;
+        if !seen.insert(path.clone()) {
+            return Err(ExportError::UnsafePath(format!("duplicate export path: {}", file.path)));
+        }
+        targets.push((path, &file.content));
     }
-
+    // The chosen root may itself be an OS alias; only descendants are rejected.
+    // These checks prevent known symlink escapes, not concurrent path replacement.
+    for (path, _) in &targets { reject_links(dir, path)?; }
     if !overwrite {
-        // Report project-relative names, not absolute ones.
-        let conflicts: Vec<String> = files
-            .iter()
-            .zip(targets.iter())
-            .filter(|(_, (path, _))| path.exists())
-            .map(|(file, _)| file.path.clone())
-            .collect();
-        if !conflicts.is_empty() {
-            return Err(ExportError::Conflicts(conflicts));
+        let conflicts: Vec<_> = files.iter().zip(&targets)
+            .filter(|(_, (path, _))| path.exists()).map(|(file, _)| file.path.clone()).collect();
+        if !conflicts.is_empty() { return Err(ExportError::Conflicts(conflicts)); }
+    }
+    // Stage every file first. A failed write leaves all original files intact.
+    // Persistence is atomic per file; the batch is not a filesystem transaction.
+    let mut staged = Vec::new();
+    for (path, content) in &targets {
+        let parent = path.parent().ok_or_else(|| ExportError::UnsafePath(path.display().to_string()))?;
+        std::fs::create_dir_all(parent).map_err(|e| io_error(parent, e))?;
+        reject_links(dir, path)?;
+        // `NamedTempFile` defaults to 0600; exported sources should honor the
+        // umask the way `std::fs::write` did (typically 0644).
+        #[allow(unused_mut)]
+        let mut builder = tempfile::Builder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            builder.permissions(std::fs::Permissions::from_mode(0o666));
+        }
+        let mut temp = builder.tempfile_in(parent).map_err(|e| io_error(path, e))?;
+        use std::io::Write;
+        temp.write_all(content.as_bytes()).map_err(|e| io_error(path, e))?;
+        temp.as_file().sync_all().map_err(|e| io_error(path, e))?;
+        staged.push((temp, path));
+    }
+    for (temp, path) in staged {
+        reject_links(dir, path)?;
+        if overwrite {
+            temp.persist(path).map_err(|e| io_error(path, e.error))?;
+        } else {
+            temp.persist_noclobber(path).map_err(|e| io_error(path, e.error))?;
         }
     }
+    Ok(())
+}
 
-    for (path, content) in &targets {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| ExportError::Io(e.to_string()))?;
+fn io_error(path: &Path, error: std::io::Error) -> ExportError {
+    ExportError::Io(format!("{}: {error}", path.display()))
+}
+
+fn reject_links(root: &Path, path: &Path) -> Result<(), ExportError> {
+    let mut current = root.to_path_buf();
+    let relative = path.strip_prefix(root).map_err(|_| ExportError::UnsafePath(path.display().to_string()))?;
+    for part in relative.components() {
+        current.push(part);
+        match std::fs::symlink_metadata(&current) {
+            Ok(meta) => {
+                #[allow(unused_mut)]
+                let mut link = meta.file_type().is_symlink();
+                #[cfg(windows)]
+                { use std::os::windows::fs::MetadataExt; link |= meta.file_attributes() & 0x400 != 0; }
+                if link { return Err(ExportError::UnsafePath(format!("symlink or reparse point: {}", current.display()))); }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
+            Err(e) => return Err(io_error(&current, e)),
         }
-        std::fs::write(path, content).map_err(|e| ExportError::Io(e.to_string()))?;
     }
     Ok(())
 }
@@ -75,6 +123,9 @@ pub fn export_project(
 /// any `..` traversal.
 fn safe_join(dir: &Path, relative: &str) -> Result<PathBuf, ExportError> {
     let rel = Path::new(relative);
+    if relative.is_empty() || relative.contains('\\') || relative.contains(':') {
+        return Err(ExportError::UnsafePath(relative.to_string()));
+    }
     for component in rel.components() {
         match component {
             Component::Normal(_) => {}

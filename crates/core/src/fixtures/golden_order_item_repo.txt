@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"gorm.io/gorm"
 
@@ -35,7 +36,7 @@ func (r *orderitemRepository) Create(ctx context.Context, m *model.OrderItem) er
 
 func (r *orderitemRepository) GetByID(ctx context.Context, orderId int64, itemId int64) (*model.OrderItem, error) {
 	var m model.OrderItem
-	err := r.db.WithContext(ctx).Where("order_id = ? AND item_id = ?", orderId, itemId).First(&m).Error
+	err := r.db.WithContext(ctx).Where("`order_id` = ? AND `item_id` = ?", orderId, itemId).First(&m).Error
 	if err != nil {
 		return nil, err
 	}
@@ -43,13 +44,16 @@ func (r *orderitemRepository) GetByID(ctx context.Context, orderId int64, itemId
 }
 
 func (r *orderitemRepository) List(ctx context.Context, page int, pageSize int) ([]*model.OrderItem, int64, error) {
+	if page < 1 || pageSize < 1 || page - 1 > int(^uint(0) >> 1) / pageSize {
+		return nil, 0, fmt.Errorf("page and pageSize must be positive and offset must fit int")
+	}
 	var total int64
 	if err := r.db.WithContext(ctx).Model(&model.OrderItem{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	var items []*model.OrderItem
 	offset := (page - 1) * pageSize
-	err := r.db.WithContext(ctx).Order("order_id,item_id").Offset(offset).Limit(pageSize).Find(&items).Error
+	err := r.db.WithContext(ctx).Order("`order_id`,`item_id`").Offset(offset).Limit(pageSize).Find(&items).Error
 	return items, total, err
 }
 
@@ -58,5 +62,5 @@ func (r *orderitemRepository) Update(ctx context.Context, m *model.OrderItem) er
 }
 
 func (r *orderitemRepository) Delete(ctx context.Context, orderId int64, itemId int64) error {
-	return r.db.WithContext(ctx).Where("order_id = ? AND item_id = ?", orderId, itemId).Delete(&model.OrderItem{}).Error
+	return r.db.WithContext(ctx).Where("`order_id` = ? AND `item_id` = ?", orderId, itemId).Delete(&model.OrderItem{}).Error
 }

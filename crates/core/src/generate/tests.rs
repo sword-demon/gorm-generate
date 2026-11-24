@@ -76,6 +76,34 @@ fn unknown_type_maps_to_any_with_warning() {
 }
 
 #[test]
+fn mysql_real_maps_to_float64_and_float_stays_float32() {
+    let ddl = "CREATE TABLE `t` (`id` BIGINT NOT NULL, `r` REAL NOT NULL, `f` FLOAT NOT NULL, PRIMARY KEY (`id`));";
+    let result = generate(&request(ddl)).expect("should generate");
+    let content = &result.files[0].content;
+
+    assert!(content.contains("R float64"), "MySQL REAL is a DOUBLE synonym, got: {content}");
+    assert!(content.contains("F float32"), "FLOAT stays float32");
+}
+
+#[test]
+fn tables_colliding_on_generated_impl_type_are_rejected() {
+    // Distinct file keys (`api_user` / `apiuser`) but one impl type name.
+    let ddl = "CREATE TABLE `api_users` (`id` BIGINT NOT NULL, PRIMARY KEY (`id`)); \
+               CREATE TABLE `apiuser` (`id` BIGINT NOT NULL, PRIMARY KEY (`id`));";
+    let err = generate(&request(ddl)).expect_err("colliding impl types should error");
+
+    assert!(err.snippet.contains("conflicts"), "got: {}", err.snippet);
+}
+
+#[test]
+fn digit_leading_generated_identifier_is_rejected() {
+    let ddl = "CREATE TABLE `t` (`id` BIGINT NOT NULL, `_1` INT NOT NULL, PRIMARY KEY (`id`));";
+    let err = generate(&request(ddl)).expect_err("a field sanitizing to `1` should error");
+
+    assert!(err.snippet.contains("unsupported"), "got: {}", err.snippet);
+}
+
+#[test]
 fn tinyint_maps_to_int8_by_default_and_bool_with_flag() {
     let ddl = "CREATE TABLE `t` (`f` TINYINT(1) NOT NULL);";
 
@@ -207,8 +235,8 @@ fn single_pk_table_generates_repository_and_service() {
     assert!(repo.contains("Delete(ctx context.Context, id int64) error"));
     assert!(repo.contains("type userRepository struct"), "repo impl");
     assert!(repo.contains("func NewUserRepository(db *gorm.DB) UserRepository"), "repo constructor");
-    assert!(repo.contains("Where(\"id = ?\", id).First(&m)"), "Where binds PK args");
-    assert!(repo.contains("Where(\"id = ?\", id).Delete(&model.User{})"), "Delete binds PK args");
+    assert!(repo.contains("Where(\"`id` = ?\", id).First(&m)"), "Where binds PK args");
+    assert!(repo.contains("Where(\"`id` = ?\", id).Delete(&model.User{})"), "Delete binds PK args");
 
     let svc = &result.files.iter().find(|f| f.path.ends_with("user_service.go")).unwrap().content;
     assert!(svc.contains("type UserService interface {"), "service interface");

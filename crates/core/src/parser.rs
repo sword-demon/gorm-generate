@@ -32,10 +32,25 @@ pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, ParseError
         Dialect::PostgreSql => &PostgreSqlDialect {},
     };
 
-    let statements = Parser::parse_sql(parser_dialect, ddl).map_err(|e| ParseError {
-        statement_index: 1,
-        snippet: e.to_string(),
+    let mut parser = Parser::new(parser_dialect).try_with_sql(ddl).map_err(|e| ParseError {
+        statement_index: 1, snippet: e.to_string(),
     })?;
+    let mut statements = Vec::new();
+    loop {
+        while parser.consume_token(&Token::SemiColon) {}
+        if parser.peek_token().token == Token::EOF { break; }
+        let start = parser.peek_token().span.start;
+        let remaining: String = ddl.lines().skip(start.line.saturating_sub(1) as usize)
+            .enumerate().map(|(i, line)| if i == 0 { line.chars().skip(start.column.saturating_sub(1) as usize).collect::<String>() } else { format!("\n{line}") }).collect();
+        let statement = parser.parse_statement().map_err(|e| ParseError {
+            statement_index: statements.len() + 1,
+            snippet: format!("{e}\n{}", remaining.chars().take(500).collect::<String>()),
+        })?;
+        statements.push(statement);
+        if parser.peek_token().token != Token::EOF && !parser.consume_token(&Token::SemiColon) {
+            return Err(ParseError { statement_index: statements.len(), snippet: format!("expected semicolon\n{}", remaining.chars().take(500).collect::<String>()) });
+        }
+    }
 
     let mut tables = Vec::new();
     let mut ignored_count = 0usize;
@@ -48,8 +63,15 @@ pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, ParseError
                 constraints,
                 ..
             }) => {
-                let table_name = ident_of(name);
-                let primary_key = extract_primary_key(columns, constraints);
+                let table_name = name.0.last().and_then(|p| match p {
+                    sqlparser::ast::ObjectNamePart::Identifier(i) => Some(if dialect == Dialect::MySql { i.value.clone() } else { identifier_key(i, dialect) }),
+                    _ => None,
+                }).unwrap_or_default();
+                let mut normalized_columns = columns.clone();
+                for col in &mut normalized_columns {
+                    if dialect == Dialect::PostgreSql { col.name.value = identifier_key(&col.name, dialect); }
+                }
+                let primary_key = extract_primary_key(&normalized_columns, constraints, dialect)?;
                 // MySQL table COMMENT='...' lands in table_options (Plain or
                 // With), not the Hive-only `comment` field.
                 let table_comment = match table_options {
@@ -65,26 +87,20 @@ pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, ParseError
                 tables.push(ParsedTable {
                     name: table_name,
                     comment: table_comment,
-                    columns: columns.clone(),
+                    columns: normalized_columns,
                     primary_key,
                 });
             }
-            Statement::Comment {
-                object_type,
-                object_name,
-                comment,
-                ..
-            } => {
-                apply_comment(
-                    &mut tables,
-                    *object_type,
-                    object_name,
-                    comment.as_deref(),
-                );
-            }
+            Statement::Comment { .. } => {}
             _ => {
                 ignored_count += 1;
             }
+        }
+    }
+    // Comments may precede CREATE TABLE in an input script.
+    for statement in &statements {
+        if let Statement::Comment { object_type, object_name, comment, .. } = statement {
+            apply_comment(&mut tables, *object_type, object_name, comment.as_deref(), dialect);
         }
     }
     Ok(ParsedScript {
@@ -101,26 +117,21 @@ fn apply_comment(
     object_type: sqlparser::ast::CommentObject,
     object_name: &sqlparser::ast::ObjectName,
     comment: Option<&str>,
+    dialect: Dialect,
 ) {
     let Some(comment) = comment else { return };
-    let Some(table_part) = object_name.0.first() else { return };
-    let sqlparser::ast::ObjectNamePart::Identifier(table_ident) = table_part else { return };
-    let table_name = table_ident.value.to_lowercase();
-
-    let column_name = match object_name.0.get(1) {
-        Some(sqlparser::ast::ObjectNamePart::Identifier(ident)) => {
-            Some(ident.value.to_lowercase())
+    let parts = &object_name.0;
+    let column_object = object_type == sqlparser::ast::CommentObject::Column;
+    let table_index = parts.len().checked_sub(if column_object { 2 } else { 1 });
+    let Some(sqlparser::ast::ObjectNamePart::Identifier(table_ident)) = table_index.and_then(|i| parts.get(i)) else { return };
+    let table_name = identifier_key(table_ident, dialect);
+    let column_name = if column_object {
+        match parts.last() {
+            Some(sqlparser::ast::ObjectNamePart::Identifier(ident)) => Some(identifier_key(ident, dialect)),
+            _ => None,
         }
-        _ => None,
-    };
-
-    let table = match tables
-        .iter_mut()
-        .find(|t| t.name.to_lowercase() == table_name)
-    {
-        Some(t) => t,
-        None => return,
-    };
+    } else { None };
+    let Some(table) = tables.iter_mut().find(|t| t.name == table_name) else { return };
 
     match (object_type, column_name) {
         (sqlparser::ast::CommentObject::Table, _) => table.comment = Some(comment.to_string()),
@@ -128,7 +139,7 @@ fn apply_comment(
             if let Some(found) = table
                 .columns
                 .iter_mut()
-                .find(|c| c.name.value.to_lowercase() == col)
+                .find(|c| c.name.value == col)
             {
                 // PG semantics are last-write-wins: replace an existing
                 // comment instead of appending a second one.
@@ -167,38 +178,31 @@ pub fn column_comment(col: &ColumnDef) -> Option<String> {
     })
 }
 
-fn ident_of(name: &sqlparser::ast::ObjectName) -> String {
-    match name.0.last() {
-        Some(sqlparser::ast::ObjectNamePart::Identifier(ident)) => ident.value.clone(),
-        _ => String::new(),
+pub fn identifier_key(ident: &sqlparser::ast::Ident, dialect: Dialect) -> String {
+    if dialect == Dialect::MySql || ident.quote_style.is_none() {
+        ident.value.to_lowercase()
+    } else {
+        ident.value.clone()
     }
 }
 
-fn extract_primary_key(columns: &[ColumnDef], constraints: &[TableConstraint]) -> Vec<String> {
-    // Inline `PRIMARY KEY` on a column definition.
-    for col in columns {
-        let is_pk = col
-            .options
-            .iter()
-            .any(|opt| matches!(opt.option, sqlparser::ast::ColumnOption::PrimaryKey(_)));
-        if is_pk {
-            return vec![col.name.value.clone()];
-        }
-    }
-    // Table-level `PRIMARY KEY (a, b)`.
+fn extract_primary_key(columns: &[ColumnDef], constraints: &[TableConstraint], dialect: Dialect) -> Result<Vec<String>, ParseError> {
+    let inline: Vec<_> = columns.iter().filter(|col| col.options.iter().any(|opt| matches!(opt.option, ColumnOption::PrimaryKey(_)))).map(|col| col.name.value.clone()).collect();
+    if !inline.is_empty() { return Ok(inline); }
     for constraint in constraints {
         if let TableConstraint::PrimaryKey(pk) = constraint {
-            return pk
-                .columns
-                .iter()
-                .map(|c| match &c.column.expr {
-                    sqlparser::ast::Expr::Identifier(ident) => ident.value.clone(),
-                    _ => String::new(),
+            return pk.columns.iter().map(|c| {
+                let key = match &c.column.expr {
+                    sqlparser::ast::Expr::Identifier(ident) => identifier_key(ident, dialect),
+                    _ => return Err(ParseError { statement_index: 0, snippet: "unsupported primary key expression or prefix index".into() }),
+                };
+                columns.iter().find(|c| identifier_key(&c.name, dialect) == key).map(|c| c.name.value.clone()).ok_or_else(|| ParseError {
+                    statement_index: 0, snippet: format!("primary key column `{key}` does not exist"),
                 })
-                .collect();
+            }).collect();
         }
     }
-    Vec::new()
+    Ok(Vec::new())
 }
 
 /// MySQL `AUTO_INCREMENT` parses as a DialectSpecific token.
@@ -215,23 +219,27 @@ pub fn is_auto_increment(col: &ColumnDef) -> bool {
 /// Classifies a MySQL column type: (base name, unsigned, display width).
 pub fn classify_mysql_type(data_type: &DataType) -> (String, bool, Option<u64>) {
     match data_type {
+        DataType::Zerofill(inner) => { let (base, _, width) = classify_mysql_type(inner); (base, true, width) }
+        DataType::Bit(_) | DataType::VarBit(_) => ("binary".into(), false, None),
         DataType::TinyInt(w) => ("tinyint".into(), false, *w),
         DataType::TinyIntUnsigned(w) => ("tinyint".into(), true, *w),
-        DataType::SmallInt(w) => ("smallint".into(), false, *w),
+        DataType::SmallInt(w) | DataType::Int2(w) => ("smallint".into(), false, *w),
         DataType::SmallIntUnsigned(w) => ("smallint".into(), true, *w),
         DataType::MediumInt(w) => ("mediumint".into(), false, *w),
         DataType::MediumIntUnsigned(w) => ("mediumint".into(), true, *w),
-        DataType::Int(w) => ("int".into(), false, *w),
+        DataType::Int(w) | DataType::Int4(w) => ("int".into(), false, *w),
         DataType::IntUnsigned(w) => ("int".into(), true, *w),
         DataType::Integer(w) => ("int".into(), false, *w),
         DataType::IntegerUnsigned(w) => ("int".into(), true, *w),
-        DataType::BigInt(w) => ("bigint".into(), false, *w),
+        DataType::BigInt(w) | DataType::Int8(w) => ("bigint".into(), false, *w),
         DataType::BigIntUnsigned(w) => ("bigint".into(), true, *w),
         DataType::Decimal(_) | DataType::Dec(_) => ("decimal".into(), false, None),
         DataType::DecimalUnsigned(_) | DataType::DecUnsigned(_) => ("decimal".into(), true, None),
         DataType::Numeric(_) | DataType::BigNumeric(_) => ("numeric".into(), false, None),
-        DataType::Float(_) | DataType::FloatUnsigned(_) => ("float".into(), false, None),
-        DataType::Double(_) | DataType::DoubleUnsigned(_) | DataType::DoublePrecision => {
+        DataType::Float(_) | DataType::FloatUnsigned(_) | DataType::Float4 => ("float".into(), false, None),
+        // MySQL `REAL` is a DOUBLE synonym unless REAL_AS_FLOAT is set; PG REAL
+        // is 4-byte but widening to float64 is lossless, so map to double.
+        DataType::Real | DataType::Float8 | DataType::Double(_) | DataType::DoubleUnsigned(_) | DataType::DoublePrecision => {
             ("double".into(), false, None)
         }
         DataType::Boolean | DataType::Bool => ("bool".into(), false, None),
@@ -280,7 +288,7 @@ pub fn is_identity(col: &ColumnDef) -> bool {
     col.options.iter().any(|opt| {
         matches!(
             &opt.option,
-            sqlparser::ast::ColumnOption::Generated { generated_keyword: true, .. }
+            sqlparser::ast::ColumnOption::Generated { generation_expr: None, .. }
         )
     })
 }
@@ -301,4 +309,8 @@ fn ident_value(part: &sqlparser::ast::ObjectNamePart) -> String {
         sqlparser::ast::ObjectNamePart::Identifier(ident) => ident.value.clone(),
         _ => String::new(),
     }
+}
+
+pub fn is_generated_expression(col: &ColumnDef) -> bool {
+    col.options.iter().any(|opt| matches!(&opt.option, ColumnOption::Generated { generation_expr: Some(_), .. }))
 }
