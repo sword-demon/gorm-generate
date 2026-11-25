@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core"
-import { open, confirm } from "@tauri-apps/plugin-dialog"
+import { confirm } from "@tauri-apps/plugin-dialog"
 import { computed, ref, watch, onBeforeUnmount } from "vue"
 
 import CodePreview from "@/components/CodePreview.vue"
@@ -230,9 +230,11 @@ async function exportToDir() {
   exportMsg.value = ""
   const files = visibleFiles.value
   try {
-    const dir = await open({ directory: true, multiple: false, title: "Export to directory" })
+    // The directory comes from Rust's native picker; the renderer never picks
+    // the write target itself.
+    const dir = await invoke<string | null>("pick_export_dir")
     if (!dir) return
-    let result = await invoke<ExportResult>("export_project", { dir, files, overwrite: false })
+    let result = await invoke<ExportResult>("export_project", { files, overwrite: false })
     if (result.conflicts.length) {
       const proceed = await confirm(
         `${result.conflicts.length} file(s) already exist and will be overwritten:\n\n` +
@@ -242,7 +244,7 @@ async function exportToDir() {
         exportMsg.value = "Export cancelled"
         return
       }
-      result = await invoke<ExportResult>("export_project", { dir, files, overwrite: true })
+      result = await invoke<ExportResult>("export_project", { files, overwrite: true })
     }
     exportMsg.value = result.error
       ? `Export failed: ${result.error}`

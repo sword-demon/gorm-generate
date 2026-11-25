@@ -62,7 +62,7 @@ Go 开发者拿到建表语句后，需要手写模型、仓储、服务接口�
 - **服务契约**: 与仓储完全同签名的薄透传；不生成 DTO；构造函数注入仓储接口。
 - **缓存契约**: 遵循 ADR-0002。仅缓存 `GetByID`，key 为 `表名:主键值...`；`Update`/`Delete` 删除 key；`List`/`Create` 不处理缓存；使用 `go-redis/v9` + `encoding/json`；TTL 在生成时成为常量；任何缓存错误降级查库且不向上抛；生成缓存装饰器与 `NewXxxRepoWithCache(repo, rdb)` 工厂，TTL 以 `<Struct>CacheTTL` 包级常量固化在生成物中；开关关闭时不生成 cache 包。服务只依赖仓储接口，注入哪个实现由调用方决定。
 - **表选择**: 生成始终覆盖全部表；界面上的表勾选只过滤预览与导出，不触发重新生成。
-- **导出契约**: 前端用 dialog 插件选择目录；写盘由 Rust 命令完成（`std::fs`），不引入 fs 插件；目标存在同名文件时先经用户确认，确认后覆盖。
+- **导出契约**: 目录由 Rust 侧的原生选择器确认后存进 managed state，渲染进程只触发选择、不传路径；写盘由 Rust 命令完成（`std::fs`），不引入 fs 插件；目标存在同名文件时先经用户确认，确认后覆盖。
 - **界面形态**: 单页。顶部工具栏（方言、module path、缓存开关、TTL、`tinyint(1)` 开关、生成按钮）；左侧 SQL 输入；右侧 Tabs（文件树 / 只读高亮预览）；表清单勾选；复制与导出；解析错误用 toast，警告用 Badge；localStorage 记住输入与选项。
 - **生成代码约定**: 生成代码注释用英文；DDL 注释原样保留为 Go 注释；文件头包含 `Code generated ... DO NOT EDIT`。
 - **版本基线**: Tauri 2.12.x、Tailwind CSS 4.3.x（CSS-first 配置）、shadcn-vue 2.9.x、sqlparser 0.64。

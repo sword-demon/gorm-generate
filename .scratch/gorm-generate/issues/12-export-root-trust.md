@@ -6,15 +6,18 @@
 
 **Blocked by:** 07
 
-**Status:** ready-for-human
+**Status:** resolved
 
 **Category:** bug
 
 **Why human:** 涉及安全模型与 UX 的取舍（是否允许"重复导出到上次目录"、state 何时失效、多窗口行为），不是纯代码修补。
 
-- [ ] `export_project` 拒绝不是"用户刚选择"的根目录
-- [ ] 正常导出（选择目录 → 写出）流程不受影响
-- [ ] 新增覆盖拒绝路径的测试（命令层或 core 层单测）
+**决定（2026-11-25）:** 目录选择器移到 Rust 侧，每次导出重新选择；不做"复用上次目录"。
+
+- [x] `export_project` 只接受 picker 确认过的根目录（不再接收 `dir` 参数）
+- [x] 命令层单测：未选择目录时报错、已选择时返回该根
+- [x] `cargo test -p gorm-generate` 与 `npm run typecheck` 通过
+- [ ] GUI 手动冒烟（选择器 → 写盘 → 冲突确认）——当前环境无法启动窗口，未验证
 
 ## Comments
 
@@ -23,3 +26,13 @@
 - 证据：`src-tauri/src/main.rs:106-120` 直接把 `dir` 交给 `gorm_generate_core::export_project`；core 只拒非绝对路径。
 - 复核记录见 `.scratch/gorm-generate/review.md:345`（「`dir` 参数本身未校验」）。该条目评级为低危，因为当前唯一调用方是 dialog 插件的返回值；但它把安全边界放在了渲染进程一侧。
 - 相关：`export.rs:45` 的绝对路径校验目前也没有测试覆盖，见 ticket 13。
+
+2026-11-25: Implemented.
+
+- `src-tauri/src/main.rs`:新增 `ExportRoot(Mutex<Option<PathBuf>>)` 作为 managed state；`pick_export_dir` 用 `tauri_plugin_dialog` 的 `blocking_pick_folder()`（命令本身跑在主线程之外，插件负责把对话框派发到主线程），选中的路径 `into_path()` 后写入 state 并返回给前端做展示。
+- `export_project` 不再接收 `dir`，只从 state 取根；没有确认过的根时返回 `No export directory selected`，不触盘。`confirmed_root` 抽出后加了命令层单测。
+- `src/App.vue`:改为 `invoke("pick_export_dir")` → 再调用不带 `dir` 的 `export_project`；`exporting` 守卫仍在选取器打开前置位，避免二次弹窗。
+- `capabilities/default.json`:移除 `dialog:allow-open`，渲染进程已经没有打开目录选择器的权限；`dialog:allow-confirm` 保留给覆盖确认。
+- `spec.md:65` 的导出契约同步改写。
+- 验证：`npm run typecheck` 通过；`cargo test -p gorm-generate` 1 passed（25s，含 tauri 依赖编译）。**未启动 GUI 做手动冒烟**，选择器 → 写盘 → 冲突确认这条链路只有编译期保证。
+- 残留：多窗口会共享同一个 state；picker 取消时保留上一次的根（但每次导出都会重新选，不会被用到）。TOCTOU（选完之后根目录被替换）不在本票范围，core 仍拒绝软链接后代。
