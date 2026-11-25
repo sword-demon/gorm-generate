@@ -33,7 +33,7 @@
 未验证:
 
 - **GUI 手动冒烟完全没有做**(当前环境起不了窗口):粘贴 → 生成 → 勾选 → 预览 → 复制 → 导出,尤其 ticket 12 改过的"Rust 选择器 → 写盘 → 冲突确认"链路,只有编译期保证。
-- **GUI 手动冒烟做了大半(2026-11-26)**:用 Screen Recording 权限 + `CGWindowList` 拿窗口几何、`CGEvent` 发事件,驱动本地构建的 `.app`。已验证:窗口渲染、**Generate 真的生成了 4 个文件**(model / repository / service / cache),文件树、Go 代码预览(带高亮)、底部依赖行(`gorm.io/gorm`、`github.com/redis/go-redis/v9`)都正常。**没验成的**:Copy all 与 Export to directory —— 合成点击进不了 WKWebView(WebKit 只认真实输入),且需要辅助功能权限才能用 AX 按名字点按钮。改动界面后(配置表单/分隔条/依赖复制)还没在真实 `.app` 里复验过一次。
+- **GUI 手动冒烟做了大半(2026-11-26)**:用 Screen Recording 权限 + `CGWindowList` 拿窗口几何、`CGEvent` 发事件,驱动本地构建的 `.app`。已验证:窗口渲染、**Generate 真的生成了 4 个文件**(model / repository / service / cache),文件树、Go 代码预览(带高亮)、底部依赖行(`gorm.io/gorm`、`github.com/redis/go-redis/v9`)都正常。改动界面后的最新 `.app` 也已重建并截图确认:标题栏单行、配置摘要/齿轮、分隔条、依赖命令均已加载。**没验成的**:配置按钮、分隔条拖动、依赖复制的真实点击 —— 合成点击进不了 WKWebView(WebKit 只认真实输入),且 `osascript` 确认辅助功能权限仍未授予。
 - CI 的 `pull_request` 触发没有真实 PR 走过。
 - "故意改坏模板验证 CI 变红"没有做(ticket 15 已注明)。
 - 产物未签名、未公证(`v0.1.1` 的构建日志里 `signed=no notarized=no`)。
