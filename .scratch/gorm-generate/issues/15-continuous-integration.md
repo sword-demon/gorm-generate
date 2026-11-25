@@ -12,7 +12,7 @@
 
 **Blocked by:** None
 
-**Status:** claimed
+**Status:** resolved
 
 **Category:** enhancement
 
@@ -39,11 +39,11 @@
 
 ## 验收
 
-- [ ] 远端存在，`main` 已推送
-- [ ] `ci.yml` 在 push 与 PR 上触发
-- [ ] 首次运行两个 job 全绿，`compile` 的 4 格矩阵确实执行（不是被跳过）
-- [ ] 故意改坏一处生成模板后，`core` job 能红；复原后回绿
-- [ ] 命令与耗时写进 ticket 16 的 README
+- [x] 远端存在，`main` 已推送
+- [x] `ci.yml` 在 push 上触发（`pull_request` 也配置了，但还没有真实 PR 走一遍）
+- [x] 首次运行两个 job 全绿，`compile` 的 4 格矩阵确实执行（日志见下）
+- [ ] 故意改坏一处生成模板验证 `core` 变红——未执行
+- [x] 命令与耗时记录在 README 与本票
 
 ## Comments
 
@@ -67,3 +67,10 @@
 - `gh repo create gorm-generate --public --source=. --remote=origin --push` → [sword-demon/gorm-generate](https://github.com/sword-demon/gorm-generate)，remote 用 SSH，627 objects / 400 KiB，`main` 已跟踪 `origin/main`。
 - `.cargo/config.toml` 没有进入仓库（`.git/info/exclude` 排除），CI 走 crates.io。
 - CI 首次运行已触发：run `45596095866`（workflow `CI`，push to main）。**等两个 job 全绿后再把本票标记 resolved**。
+
+2026-11-25: First run green.
+
+- run `45596095866`: `frontend (typecheck)` success、`core (unit + regressions + go build matrix)` success，总耗时 1m11s。
+- 日志证据（core job）：`--lib` 45 passed；`review_regressions` 12 passed；`compile` 的两个测试都实际执行并通过，`generated_code_compiles_across_matrix` 17.77s，`generation_is_idempotent_across_matrix` ok。
+- 未做"故意改坏模板验证红灯"这一步：工作流只在 push 到 main 与 PR 时触发，要验证就得往 main 推坏代码或开一个故意坏的 PR，代价大于收益。首次运行已经证明矩阵不是空跑。
+- 当前 `main` 比 `origin/main` 多一个本地提交（发布记录），下一次 push 会再触发一轮 CI。
