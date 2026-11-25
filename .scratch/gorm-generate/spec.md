@@ -88,4 +88,4 @@ Go 开发者拿到建表语句后，需要手写模型、仓储、服务接口�
 - 参考: GORM 文档、`gorm.io/cli`、gormt；设计决策见 `docs/adr/0001`、`docs/adr/0002` 与 `GLOSSARY.md`。
 - sqlparser 注意点: `AUTO_INCREMENT` 以 DialectSpecific token 形式出现，需特判；SQL 文本注释会被丢弃；表级 `PARTITION BY` 不被解析。
 - 生成产物依赖: `gorm.io/gorm`；缓存开启时另需 `github.com/redis/go-redis/v9`。界面结果区展示对应 `go get` 提示。
-- 已知缺口: User Story 26（解析错误定位到第几条语句并显示片段）部分实现 —— 语句级解析错误上报真实序号并附出错语句片段（最多 500 字符）；`try_with_sql` 分词错误仍固定上报第 1 条，语义校验错误（module path、标识符、主键）以序号 0 表示非解析错误。前端已按 camelCase `statementIndex` 消费该字段。
+- 解析错误定位: 语句级解析错误与分词错误（未闭合字符串/注释/引号标识符）都上报真实语句序号，并附出错片段（最多 500 字符）与出错行；语义校验错误（module path、标识符、主键）不归属具体语句，以序号 0 表示。前端已按 camelCase `statementIndex` 消费该字段。

@@ -5,7 +5,7 @@ use sqlparser::ast::{
 };
 use sqlparser::dialect::{MySqlDialect, PostgreSqlDialect};
 use sqlparser::parser::Parser;
-use sqlparser::tokenizer::Token;
+use sqlparser::tokenizer::{Token, Tokenizer};
 
 use crate::generate::{Dialect, ParseError};
 
@@ -32,9 +32,14 @@ pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, ParseError
         Dialect::PostgreSql => &PostgreSqlDialect {},
     };
 
-    let mut parser = Parser::new(parser_dialect).try_with_sql(ddl).map_err(|e| ParseError {
-        statement_index: 1, snippet: e.to_string(),
-    })?;
+    // Tokenize up front instead of `Parser::try_with_sql`: the latter collapses
+    // tokenizer failures into a string and loses both the location and the
+    // tokens recognized before the failure.
+    let mut tokens = Vec::new();
+    Tokenizer::new(parser_dialect, ddl)
+        .tokenize_with_location_into_buf(&mut tokens)
+        .map_err(|e| tokenizer_error(ddl, &tokens, &e))?;
+    let mut parser = Parser::new(parser_dialect).with_tokens_with_locations(tokens);
     let mut statements = Vec::new();
     loop {
         while parser.consume_token(&Token::SemiColon) {}
@@ -313,4 +318,86 @@ fn ident_value(part: &sqlparser::ast::ObjectNamePart) -> String {
 
 pub fn is_generated_expression(col: &ColumnDef) -> bool {
     col.options.iter().any(|opt| matches!(&opt.option, ColumnOption::Generated { generation_expr: Some(_), .. }))
+}
+
+/// Maps a tokenizer failure to the statement it occurred in.
+///
+/// The tokenizer keeps the tokens it recognized before failing, so the
+/// statement being tokenized is one past the last semicolon in that buffer.
+/// `TokenizerError` also carries the line/column, which is appended to the
+/// snippet because it points at the exact character.
+fn tokenizer_error(
+    ddl: &str,
+    tokens: &[sqlparser::tokenizer::TokenWithSpan],
+    err: &sqlparser::tokenizer::TokenizerError,
+) -> ParseError {
+    let statement_index = tokens
+        .iter()
+        .filter(|t| matches!(t.token, Token::SemiColon))
+        .count()
+        + 1;
+    let mut snippet = err.to_string();
+    if let Some(line) = source_line(ddl, err.location.line).filter(|line| !line.trim().is_empty()) {
+        snippet.push('\n');
+        snippet.push_str(&line);
+    }
+    ParseError { statement_index, snippet }
+}
+
+fn source_line(ddl: &str, line: u64) -> Option<String> {
+    if line == 0 {
+        return None;
+    }
+    ddl.lines().nth(line as usize - 1).map(|text| text.chars().take(500).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_error(ddl: &str, dialect: Dialect) -> ParseError {
+        match parse_ddl(ddl, dialect) {
+            Ok(_) => panic!("expected a parse error"),
+            Err(e) => e,
+        }
+    }
+
+    const FIRST: &str = "CREATE TABLE a (id BIGINT PRIMARY KEY);\n";
+
+    #[test]
+    fn unterminated_string_reports_the_statement_it_occurs_in() {
+        let e = parse_error(
+            &format!("{FIRST}CREATE TABLE b (name VARCHAR(10) DEFAULT 'oops);\n"),
+            Dialect::MySql,
+        );
+        assert_eq!(e.statement_index, 2, "snippet: {}", e.snippet);
+    }
+
+    #[test]
+    fn unterminated_string_in_the_first_statement_reports_one() {
+        let e = parse_error(
+            "CREATE TABLE a (name VARCHAR(10) DEFAULT 'oops);\n",
+            Dialect::MySql,
+        );
+        assert_eq!(e.statement_index, 1, "snippet: {}", e.snippet);
+    }
+
+    #[test]
+    fn unterminated_comment_inside_a_statement_reports_that_statement() {
+        let e = parse_error(
+            &format!("{FIRST}CREATE TABLE b (id BIGINT /* oops\n"),
+            Dialect::MySql,
+        );
+        assert_eq!(e.statement_index, 2, "snippet: {}", e.snippet);
+    }
+
+    #[test]
+    fn tokenizer_snippet_shows_the_error_location_and_line() {
+        let e = parse_error(
+            &format!("{FIRST}CREATE TABLE b (name VARCHAR(10) DEFAULT 'oops);\n"),
+            Dialect::MySql,
+        );
+        assert!(e.snippet.contains("Line: 2"), "snippet: {}", e.snippet);
+        assert!(e.snippet.contains("CREATE TABLE b"), "snippet: {}", e.snippet);
+    }
 }

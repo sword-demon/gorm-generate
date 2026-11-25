@@ -6,7 +6,7 @@
 
 **Blocked by:** None
 
-**Status:** needs-triage
+**Status:** resolved
 
 **Category:** bug
 
@@ -21,3 +21,12 @@
 2026-11-25: 由 `spec.md:91` 的已知缺口转为 ticket。此前该缺口只存在于 spec，不在追踪器里。
 
 - 前端已按 camelCase `statementIndex` 消费该字段（review B1 的修复），所以这里只需改后端取值或文案。
+
+2026-11-25: Implemented（决定: 修正确序号，而非标"位置未知"）。
+
+- 实测确认: 未闭合字符串位于第 2 条语句时，`try_with_sql` 路径上报 INDEX=1（片段里却是 Line: 2）；`\u{0007}` 这类非法字符走的是解析器路径，本来就上报 INDEX=2，不在本缺口内。
+- 根因: `Parser::try_with_sql` 把 `TokenizerError` 压成字符串，丢掉了位置；而 `Tokenizer::tokenize_with_location_into_buf` 在失败时会把已识别的 token 留在缓冲区里。
+- 修法（`crates/core/src/parser.rs`）: 改为先自行分词并 `Parser::with_tokens_with_locations`；分词失败时用缓冲区里已识别的分号数 + 1 得到语句号，snippet 追加出错行（来自 `TokenizerError.location`）。不再回退到 0，因为部分缓冲区总能给出序号。
+- 测试: `parser::tests` 新增 4 个——第 2 条语句未闭合字符串 → 2；第 1 条 → 1；语句内未闭合块注释 → 2；snippet 同时包含 `Line: 2` 与出错行原文。
+- 验证: `--lib` 45 passed（原 41），`--test review_regressions` 12 passed。`--test compile` 未跑（见 ticket 11）。
+- 文档: `spec.md:91` 的"已知缺口"改为已实现描述；README 的已知限制同步更新。语义校验错误仍以序号 0 表示，这部分没变。
