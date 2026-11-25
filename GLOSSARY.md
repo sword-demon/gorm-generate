@@ -36,6 +36,10 @@ _Avoid_: Logic、UseCase、Biz
 仓储、服务与缓存装饰器共用的五个方法（`Create` / `GetByID` / `List` / `Update` / `Delete`）的签名与主键参数表达式。由一个 crate 私有的契约模块从已解析表一次算出；三层渲染器只负责各自的函数体与 import 块。
 _Avoid_: 接口模板、方法表
 
+**表产出 (Table Output)**:
+一张表经渲染得到的全部内容：文件列表、带表名的警告，以及这些文件实际需要的第三方依赖。由 `render::table` 一次产出；`generate` 只负责摊平与去重汇总。
+_Avoid_: 渲染结果、表文件
+
 **缓存装饰器 (Cache Decorator)**:
 实现同一仓储接口、在真实仓储外增加缓存读写与失效逻辑的实现。
 _Avoid_: 缓存层、Cache Repo

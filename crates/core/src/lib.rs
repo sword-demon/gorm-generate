@@ -9,11 +9,12 @@
 
 mod export;
 mod generate;
-mod layers;
 mod naming;
 mod parser;
+mod render;
 mod resolve;
 mod types;
+mod validate;
 
 pub use export::{export_project, ExportError};
 pub use generate::{
