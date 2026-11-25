@@ -21,7 +21,7 @@
 - 只支持 MySQL 与 PostgreSQL 的 `CREATE TABLE` / `COMMENT ON`；不连接数据库、不内省 schema。
 - 解析错误定位到语句序号并附出错片段；module path、标识符等语义校验错误不归属具体语句。
 - 不生成 DTO、事务模板、关联预加载与自定义模板。
-- 界面流程没有自动化测试，只有手动冒烟。
+- 界面逻辑有挂载测试（`src/App.test.ts`），但导出写盘链路仍只有手动冒烟。
 
 ## 技术栈
 
@@ -36,14 +36,20 @@
 
 ```text
 crates/core/          解析、生成、导出；不依赖 Tauri，可独立测试
+  src/lib.rs          唯一的公开接口：re-export 列表（ADR-0007）
   src/parser.rs       DDL → 表结构
-  src/generate.rs     表结构 → 生成产物
-  src/layers.rs       仓储 / 服务 / 缓存模板
-  src/naming.rs       标识符与命名规则
+  src/resolve.rs      表结构 → 已解析表（类型、命名、import、主键）
+  src/validate.rs     语义校验：module path、标识符、命名冲突、主键
+  src/render.rs       模型 / 仓储 / 服务 / 缓存渲染器
+    render/contract.rs  三层共用的方法契约
+  src/generate.rs     串起解析 → 解析表 → 渲染 → 生成产物
   src/types.rs        列类型映射
-  src/export.rs       写盘：路径校验、冲突检测、软链接拒绝
-src-tauri/            Tauri 命令（ping / generate_project / export_project）
-src/                  Vue 界面（App.vue、SqlEditor、CodePreview）
+  src/naming.rs       标识符与命名规则
+  src/export.rs       写盘：先规划后写入，路径校验、冲突检测、软链接拒绝
+src-tauri/            Tauri 命令（generate_project / export_project / pick_export_dir）
+src/                  Vue 界面
+  App.vue             装配 composable 与模板
+  components/         SqlEditor、CodePreview
   composables/        设置持久化、生成、导出、复制的独立状态模块
   lib/                IPC 线格式与设置加载的纯函数
 ```
@@ -75,11 +81,12 @@ npm run tauri dev
 | `cargo test -p gorm-generate` | Tauri 命令单测：导出根确认、导出失败线格式 |
 | `cargo clippy --workspace --all-targets -- -D warnings` | 全 workspace lint |
 | `npm run typecheck` | 前端类型检查 |
+| `npx vite build` | 前端打包（CI 也跑，用来抓打包期错误） |
 | `npm test` | 前端单测：IPC 错误收窄、设置加载、四个 composable（设置持久化、生成、导出、复制），以及 App.vue 的模板接线（挂载测试） |
 
 `compile` 第一次运行会在临时项目里执行 `go mod tidy` 拉取 gorm 与 go-redis，因此需要能访问 module proxy。
 
-CI 见 [.github/workflows/ci.yml](.github/workflows/ci.yml)，push 到 `main` 与 PR 时跑三个 job：`frontend`（typecheck + 单测）、`core`（clippy + 全部 core 测试）、`tauri`（安装 webkit 依赖后跑 Tauri 单测与 clippy）。仓库托管在 [github.com/sword-demon/gorm-generate](https://github.com/sword-demon/gorm-generate)（public）。
+CI 见 [.github/workflows/ci.yml](.github/workflows/ci.yml)，push 到 `main` 与 PR 时跑三个 job：`frontend`（typecheck + 单测 + 打包）、`core`（clippy + 全部 core 测试）、`tauri`（安装 webkit 依赖后跑 Tauri 单测与 clippy）。仓库托管在 [github.com/sword-demon/gorm-generate](https://github.com/sword-demon/gorm-generate)（public）。
 
 ## 打包
 

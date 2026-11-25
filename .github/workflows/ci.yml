@@ -30,6 +30,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # Typecheck alone misses what only the bundler sees: unresolvable
+      # imports in .vue templates, missing assets, plugin config drift.
+      - run: npx vite build
 
   core:
     name: core (unit + regressions + go build matrix)

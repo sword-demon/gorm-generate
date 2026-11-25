@@ -5,37 +5,26 @@
 ## 1. 项目与环境
 
 - 路径:`/Volumes/MOVESPEED/study/gorm-generate`;纯本地 Tauri 2 + Vue 3 + Rust 核心的离线 DDL → Go 分层代码生成器。
-- 当前分支 `main`,记录时 HEAD `21155dd`(MIT license、workflow action 升级、handoff 刷新),与 `origin/main` 一致,工作区干净。
+- 当前分支 `main`;记录时 HEAD 是承载本文件修订的那次文档提交,位于 `519cd53`(App.vue 挂载测试)之后一格。
 - 远端:`origin git@github.com:sword-demon/gorm-generate.git`,**public**;About 为中文描述,topics 已配置。
-- 唯一的 release:`v0.1.0`,注释 tag 打在 `21155dd`(与 main 一致),附 `gorm-generate_0.1.0_aarch64.dmg` 与 `.app.zip`,未签名未公证;正文在 GitHub 上,没有入库的副本。
+- 唯一的 release:`v0.1.0`,注释 tag 打在 `21155dd`,附 `gorm-generate_0.1.0_aarch64.dmg` 与 `.app.zip`,未签名未公证;正文在 GitHub 上,没有入库的副本。此后没有新 release,main 已远在该 tag 之前。
 - `.cargo/config.toml` 是本机的 rsproxy 稀疏镜像覆盖,被 `.git/info/exclude` 排除,不属于仓库内容;不要提交它。
-- 本地保留了 13 个已合并分支(`chore/tickets-and-ci`、`test/export-relative-root`、`docs/readme`、`build/bundle-icon`、`fix/tokenizer-statement-index`、`fix/export-root-trust`、`docs/verify-compile-matrix`、`docs/publish-record`、`docs/close-ci-ticket`、`chore/mit-license`、`fix/generator-review-hardening`、`docs/handoff-refresh`、`chore/bump-workflow-actions`),都指向 main 历史,可安全删除。
+- 本地有 35 个以上的分支,全部已合入 `main`(`git branch --merged main` 可一次列出),可安全删除;尚未清理。
 
-## 2. 本次会话做了什么(2026-11-25)
+## 2. `21155dd` 之后做了什么(2026-11-25 → 11-26)
 
-1. `/triage`:发现 10 个旧 ticket 全部 `resolved`,但剩余工作只存在于 HANDOFF/review/spec 里;新建 ticket 11–17 把缺口落进 tracker。
-2. 逐个完成并关闭:
-
-| ticket | 提交 | 内容 |
-| --- | --- | --- |
-| 13 | `959655e` | 补相对根目录导出测试 |
-| 16 | `0ff08b8` | 根目录 README |
-| 14 | `49cc1f9` | 图标集 + `bundle.icon`,首次 `tauri build` 验证 |
-| 17 | `fdcf0ec` | 分词错误上报真实语句序号 |
-| 12 | `5cd33fd` | 导出目录改由 Rust 侧 picker 决定 |
-| 11 | `e78529f` | 沙箱外复跑 `go build` 矩阵,通过 |
-| 15 | `2fc5920` + `4575e3b` + `47d8999` | CI workflow、发布到 GitHub、首次绿灯记录 |
-
-3. 另加 MIT `LICENSE`(`b474c6d`),并设置 GitHub About 与 topics。
-4. 收尾:重写本文件(`8758644`);把 CI 里的 action 升到 Node 24 大版本 —— `checkout@v7`、`setup-node@v7`、`cache@v6`、`setup-go@v7`(`d9c9384`),推送后 CI 复跑绿灯,弃用注解消失;最后重新 `tauri build` 并发布首个 release `v0.1.0`。
+1. 架构审查:按 `/improve-codebase-architecture` 出报告,逐个实现候选 1–7(已解析表 IR、层契约、生成错误拆变体、校验与依赖进 core、删 payload 镜像、core 自带宽格式、导出先规划后写),每个都配 ADR-0003 至 ADR-0009。
+2. 候选 8–13:收窄 core 公开接口(只留 re-export)、渲染器自持表产出、导出错误自持线格式、CI 加 clippy 与 Tauri 测试、前端 IPC 边界抽出 `src/lib/ipc.ts`、App.vue 拆成四个 composable。
+3. 候选 14–19(承接前端):TTL 输入归一化(修真 bug)、App.vue 挂载测试、README/spec/HANDOFF 去漂移、CI 加 `vite build`。
+4. 更早一次会话(记录在旧版本文件里)完成了 ticket 11–17、MIT LICENSE、发布到 GitHub 与首个 release `v0.1.0`,并把 workflow action 升到 Node 24 大版本。
 
 ## 3. 验证状态
 
 已通过:
 
-- CI(`.github/workflows/ci.yml`)六次运行全绿:`45596095866`、`45596604627`、`45597088323`,加上 `45605761508`、`45608235921`(action 升级后,frontend 15s + core 1m6s)与 `45608894475`。两个 job:`frontend (typecheck)`、`core (unit + regressions + go build matrix)`,action 现为 `checkout@v7` / `setup-node@v7` / `cache@v6` / `setup-go@v7`。
-- 日志确认三个测试目标都真实执行:`--lib` 45 passed、`--test review_regressions` 12 passed、`--test compile` 2 passed(4 格矩阵 + 幂等)。
-- 本地:`npm run typecheck`、`cargo test -p gorm-generate-core --lib`、`--test review_regressions` 均通过;`--test compile` 需在沙箱外运行(见 §5)。
+- CI(`.github/workflows/ci.yml`)现在三个 job:`frontend (typecheck + tests)`、`core (unit + regressions + go build matrix)`、`tauri (unit tests + clippy)`。最近一次全绿是 `45649324165`(frontend 16s / core 1m35s / tauri 3m44s)。action 为 `checkout@v7` / `setup-node@v7` / `cache@v6` / `setup-go@v7`。
+- 日志确认各测试目标真实执行:`--lib` 61 passed、`--test review_regressions` 12 passed、`--test wire_format` 5 passed、`--test compile` 2 passed(4 格矩阵 + 幂等)、Tauri 单测 2 passed、前端 62 passed。
+- 本地:`npm run typecheck`、`npm test`、`npm run build` 与上述 Rust 目标均通过;`--test compile` 需在沙箱外运行(见 §5)。
 - 打包:macOS aarch64 `.app`(17.38 MiB)与 `.dmg`(6.06 MiB),图标已嵌入;`.dmg` 需在沙箱外生成。`v0.1.0` release 里的两个资产就是这组构建(另打包了 6.07 MiB 的 `.app.zip`)。
 
 未验证:
@@ -47,8 +36,8 @@
 
 ## 4. Ticket 与已知缺口
 
-- `.scratch/gorm-generate/issues/` 下 17 张 ticket **全部 `resolved`**;ticket 11–17 是本次新增,详情在各文件末尾的 Comments。
-- 仍存在的产品限制(已写进 README 的"已知限制"):只支持 MySQL/PG;语义校验错误(module path、标识符、主键)不归属具体语句,以序号 0 表示;界面流程没有自动化测试。
+- `.scratch/gorm-generate/issues/` 下 18 张 ticket **全部 `resolved`**;ticket 18 记录了 CI clippy 与 Tauri 单测的落地,详情在各文件末尾的 Comments。
+- 仍存在的产品限制(已写进 README 的"已知限制"):只支持 MySQL/PG;语义校验错误(module path、标识符、主键)不归属具体语句;界面逻辑有挂载测试,但导出写盘链路仍只有手动冒烟。
 - 历史 review 报告在 `.scratch/gorm-generate/review.md`,其中 A/B 段的修复主题已落库;该文档是快照,别当成当前状态。
 
 ## 5. 沙箱与构建注意
@@ -68,9 +57,9 @@
 
 ## 7. 关键文件
 
-- 生成核心:`crates/core/src/parser.rs`(分词错误定位)、`generate.rs`、`layers.rs`、`naming.rs`、`types.rs`、`export.rs`
-- 测试:`crates/core/src/generate/tests.rs`、`parser.rs` 内嵌测试、`crates/core/tests/review_regressions.rs`、`crates/core/tests/compile.rs`
-- 前端 / IPC:`src/App.vue`、`src-tauri/src/main.rs`(`ExportRoot` + `pick_export_dir`)、`src-tauri/tauri.conf.json`、`src-tauri/capabilities/default.json`、`src-tauri/icons/`
+- 生成核心:`crates/core/src/lib.rs`(唯一公开接口)、`parser.rs`(分词错误定位)、`resolve.rs`(已解析表)、`validate.rs`、`render.rs` + `render/contract.rs`(渲染器与层契约)、`generate.rs`、`naming.rs`、`types.rs`、`export.rs`
+- 测试:`crates/core/src/generate/tests.rs`、`parser.rs` 内嵌测试、`crates/core/tests/{review_regressions,wire_format,compile}.rs`、`src-tauri/src/main.rs` 内嵌测试、`src/**/*.test.ts`
+- 前端 / IPC:`src/App.vue`(装配)、`src/composables/`(设置持久化 / 生成 / 导出 / 复制)、`src/lib/ipc.ts`(线格式收窄)、`src-tauri/src/main.rs`(`ExportRoot` + `pick_export_dir`)、`src-tauri/tauri.conf.json`、`src-tauri/capabilities/default.json`、`src-tauri/icons/`
 - CI:`.github/workflows/ci.yml`
 - 规格与流程:`.scratch/gorm-generate/spec.md`、`AGENTS.md`、`README.md`、`GLOSSARY.md`、`docs/adr/`
 - 教训日志:`tasks/lessons.md`
@@ -79,5 +68,6 @@
 
 1. 手动冒烟 UI,重点验证导出链路(选择器权限已收窄到 Rust,前端不再持有 `dialog:allow-open`)。
 2. 若要对外分发:配置 Developer ID 签名与公证,并补 `tauri build` 的发布流程。
-3. 可选:补一条 `pull_request` 触发的真实验证(建临时 PR),或给前端加最小 e2e。
-4. 可选:删除已合并的本地分支,保持 `git branch` 干净。
+3. 可选:补一条 `pull_request` 触发的真实验证(建临时 PR);给前端加最小 e2e。
+4. 可选:删除 35 个已合并的本地分支,保持 `git branch` 干净。
+5. 可选:把 `SqlEditor` / `CodePreview` 里重复的高亮竞态守卫抽成一个 composable(候选 15),把 `render.rs` 按层拆文件(候选 16)。

@@ -63,7 +63,7 @@ Go 开发者拿到建表语句后，需要手写模型、仓储、服务接口�
 - **缓存契约**: 遵循 ADR-0002。仅缓存 `GetByID`，key 为 `表名:主键值...`；`Update`/`Delete` 删除 key；`List`/`Create` 不处理缓存；使用 `go-redis/v9` + `encoding/json`；TTL 在生成时成为常量；任何缓存错误降级查库且不向上抛；生成缓存装饰器与 `NewXxxRepoWithCache(repo, rdb)` 工厂，TTL 以 `<Struct>CacheTTL` 包级常量固化在生成物中；开关关闭时不生成 cache 包。服务只依赖仓储接口，注入哪个实现由调用方决定。
 - **表选择**: 生成始终覆盖全部表；界面上的表勾选只过滤预览与导出，不触发重新生成。
 - **导出契约**: 目录由 Rust 侧的原生选择器确认后存进 managed state，渲染进程只触发选择、不传路径；写盘由 Rust 命令完成（`std::fs`），不引入 fs 插件；目标存在同名文件时先经用户确认，确认后覆盖。
-- **界面形态**: 单页。顶部工具栏（方言、module path、缓存开关、TTL、`tinyint(1)` 开关、生成按钮）；左侧 SQL 输入；右侧 Tabs（文件树 / 只读高亮预览）；表清单勾选；复制与导出；解析错误用 toast，警告用 Badge；localStorage 记住输入与选项。
+- **界面形态**: 单页，左右两栏。顶部工具栏（方言、module path、缓存开关、TTL、`tinyint(1)` 开关、生成按钮）；左栏是可编辑的 SQL 输入（透明 textarea 叠在高亮背景上）；右栏自上而下是错误块或警告折叠块、文件计数与复制/导出按钮、表勾选行、文件列表与只读高亮预览并排、底部依赖提示；解析错误同时出现在可关闭的 toast 与内联错误块里；localStorage 记住输入与选项。
 - **生成代码约定**: 生成代码注释用英文；DDL 注释原样保留为 Go 注释；文件头包含 `Code generated ... DO NOT EDIT`。
 - **版本基线**: Tauri 2.12.x、Tailwind CSS 4.3.x（CSS-first 配置）、shadcn-vue 2.9.x、sqlparser 0.64。
 
@@ -72,7 +72,8 @@ Go 开发者拿到建表语句后，需要手写模型、仓储、服务接口�
 - **好测试的定义**: 只测外部行为——给定 DDL 与选项，断言完整生成产物；不断言字符串拼接细节。已解析表（`resolve` 的输出）是 module interface，允许直接单测。
 - **主 seam**: Rust `generate` 的 golden-file 测试。MySQL 与 PostgreSQL 各一份基线 DDL，另加针对性矩阵：类型映射、可空指针、注释（含 `COMMENT ON`）、复合主键、无主键、软删除、缓存开关、`tinyint(1)` 开关、警告列表、幂等（连续两次生成结果一致）。
 - **次 seam**: `export_project` 用临时目录验证目录结构、文件内容与同名覆盖行为。
-- **不自动化**: UI 流程（发布前手动冒烟：粘贴 → 生成 → 勾选 → 预览 → 复制/导出）；Tauri IPC 本身（命令是薄包装）。
+- **前端 seam**: 四个 composable（设置持久化、生成、导出、复制）各有单测，`App.vue` 另有挂载测试覆盖模板接线（`v-model`、按钮禁用态、表勾选、toast 与内联错误）；两个 Shiki 编辑器在挂载测试里用 stub 替换。Tauri IPC 本身不测（命令是薄包装）。
+- **仍靠手动冒烟**: 导出写盘链路（原生选择器 → 写盘 → 冲突确认）与打包产物，发布前手动走一遍。
 - **先例**: 无，全新仓库。
 
 ## Out of Scope
