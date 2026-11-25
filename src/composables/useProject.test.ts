@@ -69,6 +69,54 @@ describe("useProject", () => {
     })
   })
 
+  it.each([
+    ["cleared", ""],
+    ["not a number", "abc"],
+    ["zero", "0"],
+    ["negative", "-5"],
+    ["NaN", "NaN"],
+  ])("falls back to the default TTL when the field is %s", async (_case, typed) => {
+    mockedInvoke.mockResolvedValue(project)
+    const state = useProject(
+      settings({ cacheEnabled: ref(true), cacheTtlSeconds: ref<number | string>(typed) }),
+      () => false,
+    )
+
+    await state.generate()
+
+    expect(mockedInvoke.mock.calls[0][1]).toMatchObject({
+      request: { cacheTtlSeconds: 300 },
+    })
+  })
+
+  it("truncates a fractional TTL", async () => {
+    mockedInvoke.mockResolvedValue(project)
+    const state = useProject(
+      settings({ cacheEnabled: ref(true), cacheTtlSeconds: ref<number | string>("1.9") }),
+      () => false,
+    )
+
+    await state.generate()
+
+    expect(mockedInvoke.mock.calls[0][1]).toMatchObject({
+      request: { cacheTtlSeconds: 1 },
+    })
+  })
+
+  it("clamps the TTL to what the core can deserialize", async () => {
+    mockedInvoke.mockResolvedValue(project)
+    const state = useProject(
+      settings({ cacheEnabled: ref(true), cacheTtlSeconds: ref<number | string>(1e15) }),
+      () => false,
+    )
+
+    await state.generate()
+
+    expect(mockedInvoke.mock.calls[0][1]).toMatchObject({
+      request: { cacheTtlSeconds: 4_294_967_295 },
+    })
+  })
+
   it("selects every table and opens the first file after generating", async () => {
     mockedInvoke.mockResolvedValue(project)
     const state = useProject(settings(), () => false)

@@ -16,6 +16,20 @@ import {
 
 import type { SettingsRefs } from "./useSettings"
 
+const DEFAULT_TTL_SECONDS = 300
+// The core reads the TTL as a u32; anything larger would be rejected by serde.
+const MAX_TTL_SECONDS = 4_294_967_295
+
+// The TTL field is free text: it starts as a number, but clearing it leaves
+// "", and a negative or fractional entry passes straight through. Coerce here,
+// at the one place the request is assembled, so the core never sees a value it
+// cannot deserialize.
+function cacheTtl(seconds: number | string): number {
+  const n = Math.trunc(Number(seconds))
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_TTL_SECONDS
+  return Math.min(n, MAX_TTL_SECONDS)
+}
+
 export function useProject(settings: SettingsRefs, isBlocked: () => boolean) {
   const project = ref<GeneratedProject | null>(null)
   const selectedPath = ref("")
@@ -78,8 +92,8 @@ export function useProject(settings: SettingsRefs, isBlocked: () => boolean) {
           modulePath: settings.modulePath.value,
           cacheEnabled: settings.cacheEnabled.value,
           cacheTtlSeconds: settings.cacheEnabled.value
-            ? settings.cacheTtlSeconds.value
-            : 300,
+            ? cacheTtl(settings.cacheTtlSeconds.value)
+            : DEFAULT_TTL_SECONDS,
           tinyintAsBool: settings.tinyintAsBool.value,
         },
       })
