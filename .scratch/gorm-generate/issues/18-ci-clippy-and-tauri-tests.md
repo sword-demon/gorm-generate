@@ -27,3 +27,5 @@
 ## Comments
 
 2026-11-25: 起草并落地。真实 CI 运行待推送后确认；如果 apt 包名在 runner 镜像上不可用，退路是用 Tauri 文档的完整 apt 清单。
+
+2026-11-25: 首次运行失败（run 45630538849）：两个 job 都在 clippy 步骤报 `'cargo-clippy' is not installed for the toolchain '1.90.0'`。`rustup toolchain install --profile minimal` 不含 clippy。修复：安装步骤加 `--component clippy`。`tauri` job 的 apt 依赖已通过，未暴露包名问题。
