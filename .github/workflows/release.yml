@@ -1,0 +1,154 @@
+name: Release
+
+# A release is cut from a tag. The tag must match the crate version, so the
+# binary and the tag can never disagree (checked below).
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  # Manual run: re-publish an existing tag, or cut one from the current commit.
+  workflow_dispatch:
+    inputs:
+      tagName:
+        description: '要发布的 tag,如 v0.2.0;不存在时由本 workflow 创建'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tagName || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: ${{ github.event.inputs.tagName || github.ref_name }}
+
+jobs:
+  release:
+    name: build + publish (${{ matrix.target }})
+    # macos-15 is the arm64 image; macos-15-intel is the last x86_64 image
+    # (available until 2027-08). Both build their target natively, so no
+    # cross-compilation and no universal binary.
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      # Both jobs publish into the same GitHub Release: run them one at a time
+      # so they cannot race to create it.
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Same toolchain as CI, so a release is built with the version the tests
+      # ran against.
+      - name: Install Rust 1.90.0 (${{ matrix.target }})
+        run: |
+          rustup toolchain install 1.90.0 --profile minimal --target ${{ matrix.target }}
+          rustup default 1.90.0
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ matrix.target }}-
+
+      - name: npm ci
+        run: npm ci
+
+      # A tag that disagrees with the workspace version would publish a binary
+      # whose version does not match its tag.
+      - name: Check the tag matches the crate version
+        run: |
+          version="$(awk '/^\[workspace\.package\]/{f=1;next} /^\[/{f=0} f && /^version = /{gsub(/version = |"/,""); print; exit}' Cargo.toml)"
+          echo "crate version: v$version — tag: $TAG"
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::tag $TAG does not match the crate version v$version"
+            exit 1
+          fi
+
+      # Signing is optional: without APPLE_CERTIFICATE the build stays
+      # unsigned (adhoc signature only) and the release says so.
+      - name: Configure Apple signing (optional)
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID_SECRET: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD_SECRET: ${{ secrets.APPLE_PASSWORD }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$CERT" ]; then
+            {
+              echo 'APPLE_CERTIFICATE<<EOF'
+              echo "$CERT"
+              echo 'EOF'
+              echo "APPLE_CERTIFICATE_PASSWORD=$CERT_PASSWORD"
+              echo "APPLE_SIGNING_IDENTITY=${IDENTITY:-Developer ID Application}"
+            } >> "$GITHUB_ENV"
+            echo "signed=yes" >> "$GITHUB_ENV"
+          else
+            echo "signed=no" >> "$GITHUB_ENV"
+          fi
+          # Notarization needs an app-specific password (or an API key) plus
+          # the team id. Without them the app is signed but not notarized.
+          if [ -n "$APPLE_ID_SECRET" ] && [ -n "$APPLE_PASSWORD_SECRET" ] && [ -n "$TEAM_ID" ]; then
+            {
+              echo "APPLE_ID=$APPLE_ID_SECRET"
+              echo "APPLE_PASSWORD=$APPLE_PASSWORD_SECRET"
+              echo "APPLE_TEAM_ID=$TEAM_ID"
+            } >> "$GITHUB_ENV"
+            echo "notarized=yes" >> "$GITHUB_ENV"
+          else
+            echo "notarized=no" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ env.TAG }}
+          releaseName: gorm-generate ${{ env.TAG }}
+          releaseBody: |
+            macOS 离线 DDL → Go 分层代码生成器。
+
+            下载对应架构的 `.dmg`:
+            - `gorm-generate_*_aarch64.dmg` —— Apple Silicon(M1 及以上)
+            - `gorm-generate_*_x86_64.dmg` —— Intel
+
+            首次打开若被 Gatekeeper 拦截(未签名产物),见 README 的「打包与发布」。
+          releaseDraft: false
+          prerelease: false
+          generateReleaseNotes: true
+          # The app ships no updater, so there is no latest.json to publish.
+          uploadUpdaterJson: false
+          uploadWorkflowArtifacts: true
+          retryAttempts: 2
+          # `npm run tauri -- build …` — the `--` keeps the target flag with
+          # npm instead of letting npm claim it.
+          tauriScript: npm run tauri --
+          args: --target ${{ matrix.target }}
+
+      - name: Report the signing state
+        run: |
+          echo "signed=$signed notarized=$notarized"
+          if [ "$signed" != "yes" ]; then
+            echo "::warning::no Apple certificate configured — the release is unsigned"
+          fi

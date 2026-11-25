@@ -86,7 +86,7 @@ npm run tauri dev
 
 `compile` 第一次运行会在临时项目里执行 `go mod tidy` 拉取 gorm 与 go-redis，因此需要能访问 module proxy。
 
-CI 见 [.github/workflows/ci.yml](.github/workflows/ci.yml)，push 到 `main` 与 PR 时跑三个 job：`frontend`（typecheck + 单测 + 打包）、`core`（clippy + 全部 core 测试）、`tauri`（安装 webkit 依赖后跑 Tauri 单测与 clippy）。仓库托管在 [github.com/sword-demon/gorm-generate](https://github.com/sword-demon/gorm-generate)（public）。
+CI 见 [.github/workflows/ci.yml](.github/workflows/ci.yml)，push 到 `main` 与 PR 时跑三个 job：`frontend`（typecheck + 单测 + 打包）、`core`（clippy + 全部 core 测试）、`tauri`（安装 webkit 依赖后跑 Tauri 单测与 clippy）。仓库托管在 [github.com/sword-demon/gorm-generate](https://github.com/sword-demon/gorm-generate)（public）。发布 workflow 见 [.github/workflows/release.yml](.github/workflows/release.yml)（tag 触发，见下面的「发布」）。
 
 ## 打包
 
@@ -99,8 +99,36 @@ npm run tauri build -- --bundles app   # 只出 .app
 
 - macOS aarch64 已验证:aarch64 `.app` 约 17 MiB,`.dmg` 约 6 MiB,图标取自 `src-tauri/icons/`。
 - 需要换图标时:`npx tauri icon src-tauri/icons/icon.png`,再更新 `bundle.icon`。
-- 产物**未签名、未公证**:只带 linker 的 adhoc 签名,分发给他人时 Gatekeeper 会拦截。
+- 产物**未签名、未公证**:只带 linker 的 adhoc 签名,分发给他人时 Gatekeeper 会拦截;签名的配置见下面的「发布」。
 - 沙箱环境里 `.dmg` 打包会因 `hdiutil` 无法访问磁盘设备而失败,需在沙箱外执行。
+
+## 发布
+
+[.github/workflows/release.yml](.github/workflows/release.yml) 把一个 tag 变成 GitHub Release。
+
+**发一个版本**
+
+1. 改 `Cargo.toml` 里 `[workspace.package] version`（`package.json` 的 `version` 一并同步）。
+2. 确认该 commit 在 `main` 上,且 CI 是绿的。
+3. 打 tag 并推送:`git tag v0.2.0 && git push origin v0.2.0`。
+4. workflow 在 `macos-15`（arm64）与 `macos-15-intel`（x86_64）上各构建一次,把 `.dmg` 作为 Release 资产上传（`gorm-generate_0.2.0_aarch64.dmg` 等）,并附 GitHub 自动生成的 release notes。
+
+tag 必须与 `Cargo.toml` 的版本一致,否则 workflow 在构建前就会失败。手动重跑:`Actions → Release → Run workflow`,填入 `tagName`（tag 不存在时由 workflow 在当前 commit 上创建）。目前只出 macOS 产物（arm64 与 x86_64 各一份）：前者跑在 `macos-15`,后者跑在 `macos-15-intel`（GitHub 最后一个 x86_64 runner 镜像,可用到 2027-08,之后需要换策略）。
+
+**签名与公证**
+
+不配 secret 就是未签名产物(adhoc 签名,Gatekeeper 会拦)。要在 Releases 上放能直接打开的产物,需要在仓库的 Actions secrets 里配置:
+
+| Secret | 内容 |
+| --- | --- |
+| `APPLE_CERTIFICATE` | Developer ID Application 证书（`.p12`）的 base64 内容:`base64 -i cert.p12 \| tr -d '\n'` |
+| `APPLE_CERTIFICATE_PASSWORD` | 导出该 `.p12` 时设置的密码 |
+| `APPLE_SIGNING_IDENTITY` | 签名身份,默认 `Developer ID Application` |
+| `APPLE_ID` | Apple ID(公证用) |
+| `APPLE_PASSWORD` | 该 Apple ID 的 app 专用密码(公证用) |
+| `APPLE_TEAM_ID` | 开发者团队 id(公证用) |
+
+没有 `APPLE_CERTIFICATE` 时 workflow 照常发布,只是产物未签名;只配签名不配公证时,产物已签名但未公证。workflow 末尾会打印本次是否签名、公证。
 
 ## 文档
 

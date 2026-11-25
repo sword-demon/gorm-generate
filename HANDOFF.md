@@ -26,6 +26,7 @@
 - 日志确认各测试目标真实执行:`--lib` 61 passed、`--test review_regressions` 12 passed、`--test wire_format` 5 passed、`--test compile` 2 passed(4 格矩阵 + 幂等)、Tauri 单测 2 passed、前端 62 passed。
 - 本地:`npm run typecheck`、`npm test`、`npm run build` 与上述 Rust 目标均通过;`--test compile` 需在沙箱外运行(见 §5)。
 - 打包:macOS aarch64 `.app`(17.38 MiB)与 `.dmg`(6.06 MiB),图标已嵌入;`.dmg` 需在沙箱外生成。`v0.1.0` release 里的两个资产就是这组构建(另打包了 6.07 MiB 的 `.app.zip`)。
+- 新增 `.github/workflows/release.yml`:tag 触发 → `macos-15`(aarch64)与 `macos-15-intel`(x86_64)各构建一次 → `tauri-apps/tauri-action@v1` 上传 GitHub Release;tag 必须与 `Cargo.toml` 版本一致(构建前校验);签名/公证的 secrets 可选,不配就是未签名产物。
 
 未验证:
 
@@ -33,6 +34,7 @@
 - CI 的 `pull_request` 触发没有真实 PR 走过。
 - "故意改坏模板验证 CI 变红"没有做(ticket 15 已注明)。
 - 产物未签名、未公证。
+- **`release.yml` 没有在 CI 上真跑过**:YAML、每个 `run` 块(`bash -n`)与 tag/版本校验逻辑本地验过,`npm run tauri -- build --target <t>` 的参数拼法验过;首次真实运行仍可能要调(runner 标签、`macos-15-intel` 的可用期到 2027-08、tauri-action v1 的行为)。
 
 ## 4. Ticket 与已知缺口
 
@@ -67,7 +69,7 @@
 ## 8. 建议下一步
 
 1. 手动冒烟 UI,重点验证导出链路(选择器权限已收窄到 Rust,前端不再持有 `dialog:allow-open`)。
-2. 若要对外分发:配置 Developer ID 签名与公证,并补 `tauri build` 的发布流程。
+2. 若要对外分发:发布流程已就绪(`.github/workflows/release.yml`),剩下的是配 Developer ID 签名与公证的 secrets(见 README「发布」),然后打第一个 tag 跑通一次。
 3. 可选:补一条 `pull_request` 触发的真实验证(建临时 PR);给前端加最小 e2e。
-4. 可选:删除 35 个已合并的本地分支,保持 `git branch` 干净。
+4. 可选:删除 37 个已合并的本地分支,保持 `git branch` 干净。
 5. 可选:把 `SqlEditor` / `CodePreview` 里重复的高亮竞态守卫抽成一个 composable(候选 15),把 `render.rs` 按层拆文件(候选 16)。
