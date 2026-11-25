@@ -1,4 +1,4 @@
-use gorm_generate_core::{generate, export_project, Dialect, FileKind, GenerateError, GenerateRequest, GeneratedFile};
+use gorm_generate_core::{generate, export_project, Dialect, ExportError, FileKind, GenerateError, GenerateRequest, GeneratedFile};
 
 fn request(ddl: &str, dialect: Dialect) -> GenerateRequest {
     GenerateRequest { ddl: ddl.into(), dialect, module_path: "example.com/app".into(), cache_enabled: true, cache_ttl_seconds: 300, tinyint_as_bool: true }
@@ -143,7 +143,10 @@ fn review_export_staging_failure_preserves_originals() {
     let original = std::fs::read_to_string(dir.join("original.go")).unwrap();
     let remaining = std::fs::read_dir(&dir).unwrap().count();
     std::fs::remove_dir_all(dir).unwrap();
-    assert!(result.unwrap_err().to_string().contains("blocked"));
+    match result.unwrap_err() {
+        ExportError::Io { message } => assert!(message.contains("blocked"), "{message}"),
+        other => panic!("expected Io, got {other:?}"),
+    }
     assert_eq!(original, "original");
     assert_eq!(remaining, 2, "staged temporary files must be cleaned up");
 }

@@ -4,7 +4,9 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use gorm_generate_core::{GenerateError, GenerateRequest, GeneratedFile, GeneratedProject};
+use gorm_generate_core::{
+    ExportError, GenerateError, GenerateRequest, GeneratedFile, GeneratedProject,
+};
 use serde::Serialize;
 use tauri_plugin_dialog::DialogExt;
 
@@ -15,13 +17,14 @@ fn generate_project(request: GenerateRequest) -> Result<GeneratedProject, Genera
     gorm_generate_core::generate(&request)
 }
 
-/// Result of an export attempt. `conflicts` is non-empty when existing files
-/// blocked the write and the caller must confirm before retrying; otherwise
-/// `error` carries a readable message.
-#[derive(Serialize)]
-struct ExportResultPayload {
-    conflicts: Vec<String>,
-    error: Option<String>,
+/// Why an export command failed: a core export error, whose wire format the
+/// core owns (ADR-0009), or the lack of a picker-confirmed root — a Tauri
+/// precondition the core never sees.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+enum ExportFailure {
+    Core(ExportError),
+    NoRoot { kind: &'static str, message: String },
 }
 
 /// Directory the user confirmed through the native folder picker.
@@ -75,31 +78,12 @@ fn export_project(
     state: tauri::State<'_, ExportRoot>,
     files: Vec<GeneratedFile>,
     overwrite: bool,
-) -> ExportResultPayload {
-    let root = match confirmed_root(&state.0) {
-        Ok(root) => root,
-        Err(error) => {
-            return ExportResultPayload {
-                conflicts: Vec::new(),
-                error: Some(error),
-            }
-        }
-    };
-
-    match gorm_generate_core::export_project(&root, &files, overwrite) {
-        Ok(()) => ExportResultPayload {
-            conflicts: Vec::new(),
-            error: None,
-        },
-        Err(gorm_generate_core::ExportError::Conflicts(paths)) => ExportResultPayload {
-            conflicts: paths,
-            error: None,
-        },
-        Err(other) => ExportResultPayload {
-            conflicts: Vec::new(),
-            error: Some(other.to_string()),
-        },
-    }
+) -> Result<(), ExportFailure> {
+    let root = confirmed_root(&state.0).map_err(|message| ExportFailure::NoRoot {
+        kind: "noRoot",
+        message,
+    })?;
+    gorm_generate_core::export_project(&root, &files, overwrite).map_err(ExportFailure::Core)
 }
 
 fn main() {
@@ -129,5 +113,27 @@ mod tests {
 
         *root.lock().unwrap() = Some(PathBuf::from("/tmp/export"));
         assert_eq!(confirmed_root(&root).unwrap(), PathBuf::from("/tmp/export"));
+    }
+
+    #[test]
+    fn export_failures_reach_the_ui_as_one_tagged_shape() {
+        // The untagged wrapper must not nest the core error: the UI branches on
+        // `kind` for both sources alike.
+        let core = ExportFailure::Core(ExportError::Conflicts {
+            paths: vec!["a.go".into()],
+        });
+        assert_eq!(
+            serde_json::to_value(core).unwrap(),
+            serde_json::json!({"kind": "conflicts", "paths": ["a.go"]})
+        );
+
+        let no_root = ExportFailure::NoRoot {
+            kind: "noRoot",
+            message: "No export directory selected".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(no_root).unwrap(),
+            serde_json::json!({"kind": "noRoot", "message": "No export directory selected"})
+        );
     }
 }

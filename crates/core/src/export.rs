@@ -11,29 +11,22 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::generate::GeneratedFile;
 
-/// Why an export could not proceed.
+/// Why an export could not proceed. The variants are the core's own wire
+/// format, like `GenerateError` (ADR-0009): each carries the raw fact, and the
+/// caller words the message.
 #[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(tag = "kind", rename_all = "camelCase"))]
 pub enum ExportError {
-    /// A file path is absolute or contains a `..` component.
-    UnsafePath(String),
+    /// A file path is absolute or contains a `..` component, the root is not
+    /// absolute, or a path component is a symlink.
+    UnsafePath { path: String },
+    /// Two generated files resolve to the same target.
+    DuplicatePath { path: String },
     /// Files already exist and `overwrite` was false.
-    Conflicts(Vec<String>),
+    Conflicts { paths: Vec<String> },
     /// Filesystem failure while writing.
-    Io(String),
-}
-
-impl std::fmt::Display for ExportError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ExportError::UnsafePath(path) => {
-                write!(f, "unsafe export path: {path}")
-            }
-            ExportError::Conflicts(paths) => {
-                write!(f, "{} file(s) already exist", paths.len())
-            }
-            ExportError::Io(msg) => write!(f, "write failed: {msg}"),
-        }
-    }
+    Io { message: String },
 }
 
 /// Writes every file under `dir`, creating parent directories as needed.
@@ -71,14 +64,14 @@ struct WritePlan<'a> {
 /// target.
 fn plan_export<'a>(dir: &Path, files: &'a [GeneratedFile]) -> Result<WritePlan<'a>, ExportError> {
     if !dir.is_absolute() {
-        return Err(ExportError::UnsafePath(dir.display().to_string()));
+        return Err(ExportError::UnsafePath { path: dir.display().to_string() });
     }
     let mut seen = std::collections::HashSet::new();
     let mut writes = Vec::with_capacity(files.len());
     for file in files {
         let target = safe_join(dir, &file.path)?;
         if !seen.insert(target.clone()) {
-            return Err(ExportError::UnsafePath(format!("duplicate export path: {}", file.path)));
+            return Err(ExportError::DuplicatePath { path: file.path.clone() });
         }
         writes.push(PlannedWrite { path: &file.path, target, content: &file.content });
     }
@@ -94,14 +87,14 @@ fn write_plan(plan: &WritePlan, overwrite: bool) -> Result<(), ExportError> {
     if !overwrite {
         let conflicts: Vec<String> = plan.writes.iter()
             .filter(|write| write.target.exists()).map(|write| write.path.to_string()).collect();
-        if !conflicts.is_empty() { return Err(ExportError::Conflicts(conflicts)); }
+        if !conflicts.is_empty() { return Err(ExportError::Conflicts { paths: conflicts }); }
     }
     // Stage every file first. A failed write leaves all original files intact.
     // Persistence is atomic per file; the batch is not a filesystem transaction.
     let mut staged = Vec::new();
     for write in &plan.writes {
         let path = &write.target;
-        let parent = path.parent().ok_or_else(|| ExportError::UnsafePath(path.display().to_string()))?;
+        let parent = path.parent().ok_or_else(|| ExportError::UnsafePath { path: path.display().to_string() })?;
         std::fs::create_dir_all(parent).map_err(|e| io_error(parent, e))?;
         reject_links(root, path)?;
         // `NamedTempFile` defaults to 0600; exported sources should honor the
@@ -131,12 +124,12 @@ fn write_plan(plan: &WritePlan, overwrite: bool) -> Result<(), ExportError> {
 }
 
 fn io_error(path: &Path, error: std::io::Error) -> ExportError {
-    ExportError::Io(format!("{}: {error}", path.display()))
+    ExportError::Io { message: format!("{}: {error}", path.display()) }
 }
 
 fn reject_links(root: &Path, path: &Path) -> Result<(), ExportError> {
     let mut current = root.to_path_buf();
-    let relative = path.strip_prefix(root).map_err(|_| ExportError::UnsafePath(path.display().to_string()))?;
+    let relative = path.strip_prefix(root).map_err(|_| ExportError::UnsafePath { path: path.display().to_string() })?;
     for part in relative.components() {
         current.push(part);
         match std::fs::symlink_metadata(&current) {
@@ -145,7 +138,7 @@ fn reject_links(root: &Path, path: &Path) -> Result<(), ExportError> {
                 let mut link = meta.file_type().is_symlink();
                 #[cfg(windows)]
                 { use std::os::windows::fs::MetadataExt; link |= meta.file_attributes() & 0x400 != 0; }
-                if link { return Err(ExportError::UnsafePath(format!("symlink or reparse point: {}", current.display()))); }
+                if link { return Err(ExportError::UnsafePath { path: current.display().to_string() }); }
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
             Err(e) => return Err(io_error(&current, e)),
@@ -159,12 +152,12 @@ fn reject_links(root: &Path, path: &Path) -> Result<(), ExportError> {
 fn safe_join(dir: &Path, relative: &str) -> Result<PathBuf, ExportError> {
     let rel = Path::new(relative);
     if relative.is_empty() || relative.contains('\\') || relative.contains(':') {
-        return Err(ExportError::UnsafePath(relative.to_string()));
+        return Err(ExportError::UnsafePath { path: relative.to_string() });
     }
     for component in rel.components() {
         match component {
             Component::Normal(_) => {}
-            _ => return Err(ExportError::UnsafePath(relative.to_string())),
+            _ => return Err(ExportError::UnsafePath { path: relative.to_string() }),
         }
     }
     Ok(dir.join(rel))
@@ -252,7 +245,7 @@ mod tests {
 
         let err = export_project(&dir, &files(), false).expect_err("should conflict");
         match err {
-            ExportError::Conflicts(paths) => {
+            ExportError::Conflicts { paths } => {
                 assert!(paths.contains(&"internal/model/user.go".to_string()));
                 assert_eq!(paths.len(), 2, "both files reported, got: {paths:?}");
             }
@@ -287,7 +280,7 @@ mod tests {
     fn rejects_absolute_paths() {
         let dir = temp_dir("absolute");
         let err = plan_export(&dir, &[file("/etc/passwd")]).expect_err("absolute rejected");
-        assert!(matches!(err, ExportError::UnsafePath(_)), "got {err:?}");
+        assert!(matches!(err, ExportError::UnsafePath { .. }), "got {err:?}");
         assert!(!dir.exists(), "nothing written on unsafe path");
     }
 
@@ -295,7 +288,7 @@ mod tests {
     fn rejects_parent_traversal() {
         let dir = temp_dir("traversal");
         let err = plan_export(&dir, &[file("../escape.go")]).expect_err("traversal rejected");
-        assert!(matches!(err, ExportError::UnsafePath(_)), "got {err:?}");
+        assert!(matches!(err, ExportError::UnsafePath { .. }), "got {err:?}");
         assert!(!dir.exists(), "nothing written on unsafe path");
     }
 
@@ -305,8 +298,10 @@ mod tests {
         let err = plan_export(&dir, &[file("internal/model/user.go"), file("internal/model/user.go")])
             .expect_err("duplicate rejected");
         match err {
-            ExportError::UnsafePath(message) => assert!(message.contains("duplicate"), "{message}"),
-            other => panic!("expected UnsafePath, got {other:?}"),
+            ExportError::DuplicatePath { path } => {
+                assert_eq!(path, "internal/model/user.go");
+            }
+            other => panic!("expected DuplicatePath, got {other:?}"),
         }
     }
 
@@ -317,7 +312,7 @@ mod tests {
         let root = "gorm-generate-relative-root-should-not-exist/root";
         let err = plan_export(Path::new(root), &files()).expect_err("relative root rejected");
         match err {
-            ExportError::UnsafePath(path) => {
+            ExportError::UnsafePath { path } => {
                 assert_eq!(path, root, "error must name the rejected root");
             }
             other => panic!("expected UnsafePath, got {other:?}"),

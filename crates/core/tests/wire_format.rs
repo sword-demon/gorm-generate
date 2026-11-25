@@ -3,7 +3,7 @@
 //! so removing the payload mirrors cannot silently change the contract.
 #![cfg(feature = "serde")]
 
-use gorm_generate_core::{generate, Dialect, GeneratedFile, GenerateRequest};
+use gorm_generate_core::{generate, Dialect, ExportError, GeneratedFile, GenerateRequest};
 
 fn request(ddl: &str) -> GenerateRequest {
     GenerateRequest {
@@ -73,6 +73,31 @@ fn errors_serialize_as_a_tagged_union() {
     let json = serde_json::to_value(&validation).expect("error serializes");
     assert_eq!(json["kind"], "validation");
     assert!(json["message"].is_string(), "got {json}");
+}
+
+#[test]
+fn export_errors_serialize_as_a_tagged_union() {
+    let cases = [
+        (
+            ExportError::UnsafePath { path: "../x.go".into() },
+            serde_json::json!({"kind": "unsafePath", "path": "../x.go"}),
+        ),
+        (
+            ExportError::DuplicatePath { path: "internal/model/user.go".into() },
+            serde_json::json!({"kind": "duplicatePath", "path": "internal/model/user.go"}),
+        ),
+        (
+            ExportError::Conflicts { paths: vec!["a.go".into(), "b.go".into()] },
+            serde_json::json!({"kind": "conflicts", "paths": ["a.go", "b.go"]}),
+        ),
+        (
+            ExportError::Io { message: "/x: permission denied".into() },
+            serde_json::json!({"kind": "io", "message": "/x: permission denied"}),
+        ),
+    ];
+    for (error, expected) in cases {
+        assert_eq!(serde_json::to_value(error).expect("error serializes"), expected);
+    }
 }
 
 #[test]

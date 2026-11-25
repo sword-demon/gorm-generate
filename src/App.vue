@@ -27,10 +27,14 @@ type GenerateError =
   | { kind: "parse"; statementIndex: number; snippet: string }
   | { kind: "validation"; message: string }
 
-interface ExportResult {
-  conflicts: string[]
-  error: string | null
-}
+// Export failures come from two places with one shape: the core's tagged
+// ExportError, and Tauri's own "no picker-confirmed root" rejection.
+type ExportFailure =
+  | { kind: "unsafePath"; path: string }
+  | { kind: "duplicatePath"; path: string }
+  | { kind: "conflicts"; paths: string[] }
+  | { kind: "io"; message: string }
+  | { kind: "noRoot"; message: string }
 
 const STORAGE_KEY = "gorm-generate:state"
 
@@ -245,25 +249,72 @@ async function exportToDir() {
     // the write target itself.
     const dir = await invoke<string | null>("pick_export_dir")
     if (!dir) return
-    let result = await invoke<ExportResult>("export_project", { files, overwrite: false })
-    if (result.conflicts.length) {
+    try {
+      await invoke<void>("export_project", { files, overwrite: false })
+    } catch (cause) {
+      const failure = toExportFailure(cause)
+      // Conflicts are the one failure the user can decide to override.
+      if (failure.kind !== "conflicts") throw failure
       const proceed = await confirm(
-        `${result.conflicts.length} file(s) already exist and will be overwritten:\n\n` +
-          result.conflicts.join("\n"),
+        `${failure.paths.length} file(s) already exist and will be overwritten:\n\n` +
+          failure.paths.join("\n"),
       )
       if (!proceed) {
         exportMsg.value = "Export cancelled"
         return
       }
-      result = await invoke<ExportResult>("export_project", { files, overwrite: true })
+      await invoke<void>("export_project", { files, overwrite: true })
     }
-    exportMsg.value = result.error
-      ? `Export failed: ${result.error}`
-      : `Exported ${files.length} file(s) to ${dir}`
+    exportMsg.value = `Exported ${files.length} file(s) to ${dir}`
   } catch (cause) {
-    exportMsg.value = `Export failed: ${String(cause)}`
+    exportMsg.value = `Export failed: ${exportFailureText(toExportFailure(cause))}`
   } finally {
     exporting.value = false
+  }
+}
+
+// Narrow an IPC rejection to the export failure union instead of trusting an
+// arbitrary value; anything unrecognised is reported verbatim.
+function toExportFailure(cause: unknown): ExportFailure {
+  if (cause && typeof cause === "object") {
+    const c = cause as {
+      kind?: unknown
+      path?: unknown
+      paths?: unknown
+      message?: unknown
+    }
+    if (
+      (c.kind === "unsafePath" || c.kind === "duplicatePath") &&
+      typeof c.path === "string"
+    ) {
+      return { kind: c.kind, path: c.path }
+    }
+    if (
+      c.kind === "conflicts" &&
+      Array.isArray(c.paths) &&
+      c.paths.every((p: unknown) => typeof p === "string")
+    ) {
+      return { kind: "conflicts", paths: c.paths as string[] }
+    }
+    if ((c.kind === "io" || c.kind === "noRoot") && typeof c.message === "string") {
+      return { kind: c.kind, message: c.message }
+    }
+  }
+  return { kind: "io", message: String(cause) }
+}
+
+function exportFailureText(failure: ExportFailure): string {
+  switch (failure.kind) {
+    case "unsafePath":
+      return `unsafe export path: ${failure.path}`
+    case "duplicatePath":
+      return `duplicate export path: ${failure.path}`
+    case "conflicts":
+      return `${failure.paths.length} file(s) already exist`
+    case "io":
+      return `write failed: ${failure.message}`
+    case "noRoot":
+      return failure.message
   }
 }
 
