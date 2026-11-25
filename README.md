@@ -75,7 +75,7 @@ npm run tauri dev
 | `cargo test -p gorm-generate` | Tauri 命令单测：导出根确认、导出失败线格式 |
 | `cargo clippy --workspace --all-targets -- -D warnings` | 全 workspace lint |
 | `npm run typecheck` | 前端类型检查 |
-| `npm test` | 前端单测：IPC 错误收窄、设置加载、四个 composable（设置持久化、生成、导出、复制） |
+| `npm test` | 前端单测：IPC 错误收窄、设置加载、四个 composable（设置持久化、生成、导出、复制），以及 App.vue 的模板接线（挂载测试） |
 
 `compile` 第一次运行会在临时项目里执行 `go mod tidy` 拉取 gorm 与 go-redis，因此需要能访问 module proxy。
 
