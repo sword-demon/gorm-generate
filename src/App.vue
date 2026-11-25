@@ -6,95 +6,18 @@ import { computed, ref, watch, onBeforeUnmount } from "vue"
 import CodePreview from "@/components/CodePreview.vue"
 import SqlEditor from "@/components/SqlEditor.vue"
 import { Button } from "@/components/ui/button"
+import {
+  exportFailureText,
+  generateErrorDetail,
+  generateErrorTitle,
+  toExportFailure,
+  toGenerateError,
+  type GenerateError,
+  type GeneratedProject,
+} from "@/lib/ipc"
+import { loadState, STORAGE_KEY } from "@/lib/settings"
 
-type FileKind = "model" | "repository" | "service" | "cache"
-
-interface GeneratedFile {
-  path: string
-  content: string
-  table: string
-  kind: FileKind
-}
-
-interface GeneratedProject {
-  files: GeneratedFile[]
-  tables: string[]
-  warnings: string[]
-  dependencies: string[]
-}
-
-type GenerateError =
-  | { kind: "parse"; statementIndex: number; snippet: string }
-  | { kind: "validation"; message: string }
-
-// Export failures come from two places with one shape: the core's tagged
-// ExportError, and Tauri's own "no picker-confirmed root" rejection.
-type ExportFailure =
-  | { kind: "unsafePath"; path: string }
-  | { kind: "duplicatePath"; path: string }
-  | { kind: "conflicts"; paths: string[] }
-  | { kind: "io"; message: string }
-  | { kind: "noRoot"; message: string }
-
-const STORAGE_KEY = "gorm-generate:state"
-
-const defaultDdl =
-  "CREATE TABLE `users` (\n" +
-  "  `id` BIGINT NOT NULL AUTO_INCREMENT,\n" +
-  "  `username` VARCHAR(64) NOT NULL,\n" +
-  "  `email` VARCHAR(128) NOT NULL,\n" +
-  "  `age` TINYINT(1) NULL,\n" +
-  "  `balance` DECIMAL(12,2) NOT NULL,\n" +
-  "  `created_at` DATETIME NOT NULL,\n" +
-  "  `deleted_at` DATETIME NULL,\n" +
-  "  PRIMARY KEY (`id`)\n" +
-  ") ENGINE=InnoDB COMMENT='用户表';"
-
-interface PersistedState {
-  ddl: string
-  dialect: "mysql" | "postgres"
-  modulePath: string
-  cacheEnabled: boolean
-  cacheTtlSeconds: number
-  tinyintAsBool: boolean
-}
-
-function loadState(): PersistedState {
-  const base = defaults()
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return base
-    const s = JSON.parse(raw)
-    // Validate each field; a corrupt/stale value falls back to its default.
-    return {
-      ddl: typeof s.ddl === "string" ? s.ddl : base.ddl,
-      dialect: s.dialect === "postgres" ? "postgres" : "mysql",
-      modulePath: typeof s.modulePath === "string" ? s.modulePath : base.modulePath,
-      cacheEnabled: typeof s.cacheEnabled === "boolean" ? s.cacheEnabled : base.cacheEnabled,
-      cacheTtlSeconds:
-        Number.isInteger(s.cacheTtlSeconds) && s.cacheTtlSeconds > 0
-          ? s.cacheTtlSeconds
-          : base.cacheTtlSeconds,
-      tinyintAsBool: typeof s.tinyintAsBool === "boolean" ? s.tinyintAsBool : base.tinyintAsBool,
-    }
-  } catch {
-    // ignore corrupt state, fall back to defaults
-  }
-  return base
-}
-
-function defaults(): PersistedState {
-  return {
-    ddl: defaultDdl,
-    dialect: "mysql",
-    modulePath: "github.com/example/app",
-    cacheEnabled: false,
-    cacheTtlSeconds: 300,
-    tinyintAsBool: false,
-  }
-}
-
-const initial = loadState()
+const initial = loadState(localStorage.getItem(STORAGE_KEY))
 const ddl = ref(initial.ddl)
 const modulePath = ref(initial.modulePath)
 const dialect = ref<"mysql" | "postgres">(initial.dialect)
@@ -198,33 +121,6 @@ async function generate() {
   }
 }
 
-// Tauri rejects with whatever the command returned; narrow to the tagged
-// union we render instead of trusting an arbitrary value.
-function toGenerateError(cause: unknown): GenerateError {
-  if (cause && typeof cause === "object") {
-    const c = cause as {
-      kind?: unknown
-      statementIndex?: unknown
-      snippet?: unknown
-      message?: unknown
-    }
-    if (c.kind === "parse" && typeof c.snippet === "string") {
-      return {
-        kind: "parse",
-        statementIndex:
-          typeof c.statementIndex === "number" ? c.statementIndex : 1,
-        snippet: c.snippet,
-      }
-    }
-    if (c.kind === "validation" && typeof c.message === "string") {
-      return { kind: "validation", message: c.message }
-    }
-  }
-  // IPC argument failures and anything else are request problems, not parse
-  // errors; label them as such.
-  return { kind: "validation", message: String(cause) }
-}
-
 async function copy(text: string, label: string) {
   copyError.value = ""
   try {
@@ -273,51 +169,6 @@ async function exportToDir() {
   }
 }
 
-// Narrow an IPC rejection to the export failure union instead of trusting an
-// arbitrary value; anything unrecognised is reported verbatim.
-function toExportFailure(cause: unknown): ExportFailure {
-  if (cause && typeof cause === "object") {
-    const c = cause as {
-      kind?: unknown
-      path?: unknown
-      paths?: unknown
-      message?: unknown
-    }
-    if (
-      (c.kind === "unsafePath" || c.kind === "duplicatePath") &&
-      typeof c.path === "string"
-    ) {
-      return { kind: c.kind, path: c.path }
-    }
-    if (
-      c.kind === "conflicts" &&
-      Array.isArray(c.paths) &&
-      c.paths.every((p: unknown) => typeof p === "string")
-    ) {
-      return { kind: "conflicts", paths: c.paths as string[] }
-    }
-    if ((c.kind === "io" || c.kind === "noRoot") && typeof c.message === "string") {
-      return { kind: c.kind, message: c.message }
-    }
-  }
-  return { kind: "io", message: String(cause) }
-}
-
-function exportFailureText(failure: ExportFailure): string {
-  switch (failure.kind) {
-    case "unsafePath":
-      return `unsafe export path: ${failure.path}`
-    case "duplicatePath":
-      return `duplicate export path: ${failure.path}`
-    case "conflicts":
-      return `${failure.paths.length} file(s) already exist`
-    case "io":
-      return `write failed: ${failure.message}`
-    case "noRoot":
-      return failure.message
-  }
-}
-
 const allContent = computed(() =>
   visibleFiles.value.map((f) => `// ==== ${f.path} ====\n${f.content}`).join("\n"),
 )
@@ -329,17 +180,9 @@ const dependencies = computed(() => project.value?.dependencies ?? [])
 // Parse error toast: shown right after a failed generate, dismissible.
 const showErrorToast = computed(() => error.value !== null && !toastDismissed.value)
 
-const errorTitle = computed(() => {
-  if (error.value === null) return ""
-  return error.value.kind === "parse"
-    ? `Parse error in statement #${error.value.statementIndex}`
-    : "Invalid input"
-})
+const errorTitle = computed(() => generateErrorTitle(error.value))
 
-const errorDetail = computed(() => {
-  if (error.value === null) return ""
-  return error.value.kind === "parse" ? error.value.snippet : error.value.message
-})
+const errorDetail = computed(() => generateErrorDetail(error.value))
 
 function dismissToast() {
   toastDismissed.value = true

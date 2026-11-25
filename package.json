@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
     "preview": "vite preview",
     "tauri": "tauri"
   },
@@ -30,6 +31,7 @@
     "shadcn-vue": "2.9.0",
     "typescript": "~5.9.3",
     "vite": "^8.3.8",
+    "vitest": "^5.1.2",
     "vue-tsc": "^3.3.14"
   }
 }
