@@ -2,6 +2,8 @@
 
 use sqlparser::ast::DataType;
 
+use crate::parser::ident_value;
+
 /// Result of mapping one column type.
 pub struct MappedType {
     pub go_type: String,
@@ -143,12 +145,5 @@ pub fn classify_mysql_type(data_type: &DataType) -> (String, bool, Option<u64>) 
             }
         }
         other => (format!("{other:?}").to_lowercase(), false, None),
-    }
-}
-
-fn ident_value(part: &sqlparser::ast::ObjectNamePart) -> String {
-    match part {
-        sqlparser::ast::ObjectNamePart::Identifier(ident) => ident.value.clone(),
-        _ => String::new(),
     }
 }
