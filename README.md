@@ -68,12 +68,15 @@ npm run tauri dev
 | --- | --- |
 | `cargo test -p gorm-generate-core --lib` | golden 文件 + 单元测试：类型映射、命名、导出路径（含相对根目录） |
 | `cargo test -p gorm-generate-core --test review_regressions` | review 回归：重复路径、软链接、staging 失败 |
+| `cargo test -p gorm-generate-core --test wire_format --features serde` | IPC 线格式：请求、项目、生成错误与导出错误的 JSON |
 | `cargo test -p gorm-generate-core --test compile` | MySQL/PG × 缓存开关 4 格 `go build` 矩阵 + 幂等（需要 Go 与网络） |
+| `cargo test -p gorm-generate` | Tauri 命令单测：导出根确认、导出失败线格式 |
+| `cargo clippy --workspace --all-targets -- -D warnings` | 全 workspace lint |
 | `npm run typecheck` | 前端类型检查 |
 
 `compile` 第一次运行会在临时项目里执行 `go mod tidy` 拉取 gorm 与 go-redis，因此需要能访问 module proxy。
 
-CI 见 [.github/workflows/ci.yml](.github/workflows/ci.yml)：push 到 `main` 与 PR 时跑上述全部检查。仓库托管在 [github.com/sword-demon/gorm-generate](https://github.com/sword-demon/gorm-generate)（public）。
+CI 见 [.github/workflows/ci.yml](.github/workflows/ci.yml)，push 到 `main` 与 PR 时跑三个 job：`frontend`（typecheck）、`core`（clippy + 全部 core 测试）、`tauri`（安装 webkit 依赖后跑 Tauri 单测与 clippy）。仓库托管在 [github.com/sword-demon/gorm-generate](https://github.com/sword-demon/gorm-generate)（public）。
 
 ## 打包
 

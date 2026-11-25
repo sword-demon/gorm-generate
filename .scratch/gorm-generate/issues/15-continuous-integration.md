@@ -74,3 +74,8 @@
 - 日志证据（core job）：`--lib` 45 passed；`review_regressions` 12 passed；`compile` 的两个测试都实际执行并通过，`generated_code_compiles_across_matrix` 17.77s，`generation_is_idempotent_across_matrix` ok。
 - 未做"故意改坏模板验证红灯"这一步：工作流只在 push 到 main 与 PR 时触发，要验证就得往 main 推坏代码或开一个故意坏的 PR，代价大于收益。首次运行已经证明矩阵不是空跑。
 - 当前 `main` 比 `origin/main` 多一个本地提交（发布记录），下一次 push 会再触发一轮 CI。
+
+2026-11-25: 推翻「不要在 CI 里构建 src-tauri」。
+
+- 前提变了：`src-tauri` 现在有两个单元测试（导出根确认、导出失败线格式），后者是 ADR-0009 的唯一守卫；不构建等于让它们成为死代码。
+- 新增第三个 job `tauri`（apt 安装 webkit2gtk-4.1 等系统依赖），同时给 `core` job 加了 clippy 门禁。详见 issue 18。

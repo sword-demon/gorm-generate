@@ -365,7 +365,7 @@ fn golden_composite_pk_ddl_is_locked() {
         .iter()
         .map(|f| (f.path.as_str(), f.content.as_str()))
         .collect();
-    let golden: Vec<(&str, &str)> = GOLDEN_COMPOSITE.iter().copied().collect();
+    let golden: Vec<(&str, &str)> = GOLDEN_COMPOSITE.to_vec();
     assert_eq!(actual, golden, "composite-PK golden output changed");
 }
 
@@ -378,7 +378,7 @@ fn golden_no_pk_ddl_is_locked() {
         .iter()
         .map(|f| (f.path.as_str(), f.content.as_str()))
         .collect();
-    let golden: Vec<(&str, &str)> = GOLDEN_NO_PK.iter().copied().collect();
+    let golden: Vec<(&str, &str)> = GOLDEN_NO_PK.to_vec();
     assert_eq!(actual, golden, "no-PK golden output changed");
     assert!(
         result.warnings.iter().any(|w| w.contains("logs") && w.contains("no primary key")),
@@ -494,7 +494,7 @@ fn golden_pg_sample_ddl_is_locked() {
         .iter()
         .map(|f| (f.path.as_str(), f.content.as_str()))
         .collect();
-    let golden: Vec<(&str, &str)> = GOLDEN_PG.iter().copied().collect();
+    let golden: Vec<(&str, &str)> = GOLDEN_PG.to_vec();
     assert_eq!(actual, golden, "PG golden output changed");
 }
 
@@ -613,7 +613,7 @@ fn golden_cache_is_locked() {
         .iter()
         .map(|f| (f.path.as_str(), f.content.as_str()))
         .collect();
-    let golden: Vec<(&str, &str)> = GOLDEN_CACHE.iter().copied().collect();
+    let golden: Vec<(&str, &str)> = GOLDEN_CACHE.to_vec();
     assert_eq!(actual, golden, "golden cache output changed");
 }
 

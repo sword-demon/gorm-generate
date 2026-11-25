@@ -69,6 +69,12 @@ jobs:
           path: ~/go/pkg/mod
           key: gomod-gorm-v1.31.2-redis-v9.7.0
 
+      # Fails fast on lint drift; the 4 pre-existing golden-test warnings were
+      # cleaned up when this step landed. No fmt check: the repo is not
+      # rustfmt-formatted and a fmt gate would stay red.
+      - name: cargo clippy -D warnings
+        run: cargo clippy -p gorm-generate-core --all-targets -- -D warnings
+
       - name: cargo test --lib
         run: cargo test -p gorm-generate-core --lib
 
@@ -83,3 +89,39 @@ jobs:
       # Needs Go on PATH and network for `go mod tidy` inside each temp project.
       - name: cargo test compile (go build matrix)
         run: cargo test -p gorm-generate-core --test compile
+
+  # The Tauri wrapper has its own unit tests (export root confirmation, export
+  # failure wire format). Compiling it on Linux needs the system libraries the
+  # app links against; the debug build reads devUrl, so no frontend build is
+  # needed for `cargo test`.
+  tauri:
+    name: tauri (unit tests + clippy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust 1.90.0
+        run: |
+          rustup toolchain install 1.90.0 --profile minimal
+          rustup default 1.90.0
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: cargo clippy -D warnings
+        run: cargo clippy -p gorm-generate --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test -p gorm-generate
