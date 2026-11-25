@@ -12,7 +12,7 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-human
+**Status:** claimed
 
 **Category:** enhancement
 
@@ -60,3 +60,10 @@
 - Rust 通过 runner 预装的 rustup 安装，避免引入 toolchain action；`target/` 不缓存，防止陈旧产物掩盖编译错误。
 - YAML 已在本地用解析器校验结构；首次真实运行要等远端仓库建好。
 - **推送前必须注意**：`.cargo/config.toml` 是未跟踪的本地文件，把 crates-io 替换成 rsproxy.cn 稀疏镜像（review C1）。`.gitignore` 没有覆盖它，`git add .` 会把它带进仓库，之后 CI 会走 rsproxy 而不是 crates.io。推送时排除它，或先加进 `.gitignore`。
+
+2026-11-25: Published; first run pending.
+
+- `gh auth refresh -h github.com` 完成设备授权（当前 gh 版本没有 `-u` 参数）。
+- `gh repo create gorm-generate --public --source=. --remote=origin --push` → [sword-demon/gorm-generate](https://github.com/sword-demon/gorm-generate)，remote 用 SSH，627 objects / 400 KiB，`main` 已跟踪 `origin/main`。
+- `.cargo/config.toml` 没有进入仓库（`.git/info/exclude` 排除），CI 走 crates.io。
+- CI 首次运行已触发：run `45596095866`（workflow `CI`，push to main）。**等两个 job 全绿后再把本票标记 resolved**。

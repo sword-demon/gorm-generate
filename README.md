@@ -73,7 +73,7 @@ npm run tauri dev
 
 `compile` 第一次运行会在临时项目里执行 `go mod tidy` 拉取 gorm 与 go-redis，因此需要能访问 module proxy。
 
-CI 见 [.github/workflows/ci.yml](.github/workflows/ci.yml)：push 到 `main` 与 PR 时跑上述全部检查。**仓库目前没有远端，这条 workflow 还没有真实运行过。**
+CI 见 [.github/workflows/ci.yml](.github/workflows/ci.yml)：push 到 `main` 与 PR 时跑上述全部检查。仓库托管在 [github.com/sword-demon/gorm-generate](https://github.com/sword-demon/gorm-generate)（public）。
 
 ## 打包
 
