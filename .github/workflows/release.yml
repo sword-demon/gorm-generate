@@ -131,7 +131,7 @@ jobs:
 
             下载对应架构的 `.dmg`:
             - `gorm-generate_*_aarch64.dmg` —— Apple Silicon(M1 及以上)
-            - `gorm-generate_*_x86_64.dmg` —— Intel
+            - `gorm-generate_*_x64.dmg` —— Intel
 
             首次打开若被 Gatekeeper 拦截(未签名产物),见 README 的「打包与发布」。
           releaseDraft: false
