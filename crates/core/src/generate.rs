@@ -27,13 +27,24 @@ pub struct GenerateRequest {
     pub tinyint_as_bool: bool,
 }
 
+/// Which layer a generated file belongs to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileKind {
+    Model,
+    Repository,
+    Service,
+    Cache,
+}
+
 /// One generated file, path is project-relative. `table` names the source
-/// table so the UI can filter files by selected tables.
+/// table so the UI can filter files by selected tables; `kind` names the
+/// layer, so callers can address a file without knowing the order or path.
 #[derive(Debug, PartialEq)]
 pub struct GeneratedFile {
     pub path: String,
     pub content: String,
     pub table: String,
+    pub kind: FileKind,
 }
 
 /// Full output of one generation run. Pure: same request, byte-identical result.
@@ -42,6 +53,16 @@ pub struct GeneratedProject {
     pub files: Vec<GeneratedFile>,
     pub tables: Vec<String>,
     pub warnings: Vec<String>,
+}
+
+impl GeneratedProject {
+    /// The file this table produced for one layer, if any. Tables without a
+    /// primary key only have a model.
+    pub fn file(&self, table: &str, kind: FileKind) -> Option<&GeneratedFile> {
+        self.files
+            .iter()
+            .find(|file| file.table == table && file.kind == kind)
+    }
 }
 
 /// Why generation failed: the DDL did not parse, or the request and the
@@ -192,6 +213,7 @@ fn render_model(table: &Table) -> GeneratedFile {
         path: format!("internal/model/{}.go", table.file_base),
         content,
         table: table.sql_name.clone(),
+        kind: FileKind::Model,
     }
 }
 

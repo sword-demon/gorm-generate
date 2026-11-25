@@ -35,6 +35,40 @@ struct GeneratedFilePayload {
     /// Source table, used by the UI to filter files by selected tables.
     #[serde(default)]
     table: String,
+    /// Layer this file belongs to; carried back unchanged by the exporter.
+    kind: FileKindPayload,
+}
+
+/// Mirrors `gorm_generate_core::FileKind` across the IPC seam.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum FileKindPayload {
+    Model,
+    Repository,
+    Service,
+    Cache,
+}
+
+impl From<gorm_generate_core::FileKind> for FileKindPayload {
+    fn from(kind: gorm_generate_core::FileKind) -> Self {
+        match kind {
+            gorm_generate_core::FileKind::Model => FileKindPayload::Model,
+            gorm_generate_core::FileKind::Repository => FileKindPayload::Repository,
+            gorm_generate_core::FileKind::Service => FileKindPayload::Service,
+            gorm_generate_core::FileKind::Cache => FileKindPayload::Cache,
+        }
+    }
+}
+
+impl From<FileKindPayload> for gorm_generate_core::FileKind {
+    fn from(kind: FileKindPayload) -> Self {
+        match kind {
+            FileKindPayload::Model => gorm_generate_core::FileKind::Model,
+            FileKindPayload::Repository => gorm_generate_core::FileKind::Repository,
+            FileKindPayload::Service => gorm_generate_core::FileKind::Service,
+            FileKindPayload::Cache => gorm_generate_core::FileKind::Cache,
+        }
+    }
 }
 
 /// IPC layer only forwards: parsing and generation live in `gorm-generate-core`.
@@ -76,6 +110,7 @@ fn generate_project(
                     path: f.path,
                     content: f.content,
                     table: f.table,
+                    kind: f.kind.into(),
                 })
                 .collect(),
             tables: project.tables,
@@ -192,6 +227,7 @@ fn export_project(
             path: f.path,
             content: f.content,
             table: f.table,
+            kind: f.kind.into(),
         })
         .collect();
 

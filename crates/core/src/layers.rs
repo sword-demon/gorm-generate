@@ -107,6 +107,7 @@ func (r *{impl_type}) Delete({get_params}) error {{
         path: format!("internal/repository/{}_repo.go", table.file_base),
         content,
         table: table.sql_name.clone(),
+        kind: crate::generate::FileKind::Repository,
     }
 }
 
@@ -186,6 +187,7 @@ func (s *{impl_type}) Delete({get_params}) error {{
         path: format!("internal/service/{}_service.go", table.file_base),
         content,
         table: table.sql_name.clone(),
+        kind: crate::generate::FileKind::Service,
     }
 }
 
@@ -304,6 +306,7 @@ func (c *{impl_type}) Delete({get_params}) error {{
         path: format!("internal/cache/{}_cache.go", table.file_base),
         content,
         table: table.sql_name.clone(),
+        kind: crate::generate::FileKind::Cache,
     }
 }
 

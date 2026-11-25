@@ -14,16 +14,18 @@ fn request(ddl: &str) -> GenerateRequest {
     }
 }
 
+fn file<'a>(project: &'a GeneratedProject, table: &str, kind: FileKind) -> &'a GeneratedFile {
+    project
+        .file(table, kind)
+        .unwrap_or_else(|| panic!("missing {kind:?} file for table `{table}`"))
+}
+
 #[test]
 fn generates_model_file_for_single_table() {
     let ddl = "CREATE TABLE `users` (`id` BIGINT NOT NULL AUTO_INCREMENT, PRIMARY KEY (`id`));";
     let result = generate(&request(ddl)).expect("should generate");
 
-    let file = result
-        .files
-        .iter()
-        .find(|f| f.path == "internal/model/user.go")
-        .expect("model file for users table");
+    let file = file(&result, "users", FileKind::Model);
     assert!(file.content.contains("type User struct {"));
     assert!(file.content.contains("func (u User) TableName() string {"));
 }
@@ -55,7 +57,7 @@ fn maps_column_types_to_go_types() {
         `e` ENUM('a','b') NOT NULL\
     );";
     let result = generate(&request(ddl)).expect("should generate");
-    let content = &result.files[0].content;
+    let content = &file(&result, "t", FileKind::Model).content;
 
     assert!(content.contains("I int32"), "int -> int32, got: {content}");
     assert!(content.contains("D string"), "decimal -> string");
@@ -72,7 +74,7 @@ fn maps_column_types_to_go_types() {
 fn unknown_type_maps_to_any_with_warning() {
     let ddl = "CREATE TABLE `t` (`id` BIGINT NOT NULL, `x` WEIRDTYPE NOT NULL, PRIMARY KEY (`id`));";
     let result = generate(&request(ddl)).expect("should generate");
-    assert!(result.files[0].content.contains("X any"));
+    assert!(file(&result, "t", FileKind::Model).content.contains("X any"));
     assert!(
         result.warnings.iter().any(|w| w.contains("weirdtype")),
         "warning for unknown type, got: {:?}",
@@ -84,7 +86,7 @@ fn unknown_type_maps_to_any_with_warning() {
 fn mysql_real_maps_to_float64_and_float_stays_float32() {
     let ddl = "CREATE TABLE `t` (`id` BIGINT NOT NULL, `r` REAL NOT NULL, `f` FLOAT NOT NULL, PRIMARY KEY (`id`));";
     let result = generate(&request(ddl)).expect("should generate");
-    let content = &result.files[0].content;
+    let content = &file(&result, "t", FileKind::Model).content;
 
     assert!(content.contains("R float64"), "MySQL REAL is a DOUBLE synonym, got: {content}");
     assert!(content.contains("F float32"), "FLOAT stays float32");
@@ -122,12 +124,12 @@ fn tinyint_maps_to_int8_by_default_and_bool_with_flag() {
     let ddl = "CREATE TABLE `t` (`f` TINYINT(1) NOT NULL);";
 
     let default = generate(&request(ddl)).expect("should generate");
-    assert!(default.files[0].content.contains("F int8"), "tinyint(1) -> int8 by default");
+    assert!(file(&default, "t", FileKind::Model).content.contains("F int8"), "tinyint(1) -> int8 by default");
 
     let mut req = request(ddl);
     req.tinyint_as_bool = true;
     let as_bool = generate(&req).expect("should generate");
-    assert!(as_bool.files[0].content.contains("F bool"), "tinyint(1) -> bool with flag");
+    assert!(file(&as_bool, "t", FileKind::Model).content.contains("F bool"), "tinyint(1) -> bool with flag");
 }
 
 #[test]
@@ -139,7 +141,7 @@ fn generates_gorm_and_json_tags() {
         PRIMARY KEY (`id`)\
     );";
     let result = generate(&request(ddl)).expect("should generate");
-    let content = &result.files[0].content;
+    let content = &file(&result, "users", FileKind::Model).content;
 
     assert!(content.contains("gorm:\"column:id;primaryKey;autoIncrement;not null\""));
     assert!(content.contains("gorm:\"column:name;not null\""));
@@ -205,7 +207,7 @@ fn table_and_column_comments_become_go_comments() {
         PRIMARY KEY (`id`)\
     ) COMMENT='user table';";
     let result = generate(&request(ddl)).expect("should generate");
-    let content = &result.files[0].content;
+    let content = &file(&result, "users", FileKind::Model).content;
 
     assert!(content.contains("// user table"), "table comment above struct, got: {content}");
     assert!(content.contains("\t// primary key\n\tId int64"), "column comment above field");
@@ -292,9 +294,9 @@ fn no_pk_table_generates_model_only_with_warning() {
 fn module_path_is_used_in_imports() {
     let ddl = "CREATE TABLE `users` (`id` BIGINT NOT NULL, PRIMARY KEY (`id`));";
     let result = generate(&request(ddl)).expect("should generate");
-    let repo = &result.files.iter().find(|f| f.path.ends_with("user_repo.go")).unwrap().content;
+    let repo = &file(&result, "users", FileKind::Repository).content;
     assert!(repo.contains("\"github.com/example/app/internal/model\""), "repo imports model via module path");
-    let svc = &result.files.iter().find(|f| f.path.ends_with("user_service.go")).unwrap().content;
+    let svc = &file(&result, "users", FileKind::Service).content;
     assert!(svc.contains("\"github.com/example/app/internal/repository\""), "service imports repo via module path");
 }
 
@@ -302,7 +304,7 @@ fn module_path_is_used_in_imports() {
 fn multiline_comment_is_flattened_into_one_line() {
     let ddl = "CREATE TABLE `t` (`x` INT NOT NULL COMMENT 'line1\nline2');";
     let result = generate(&request(ddl)).expect("should generate");
-    let content = &result.files[0].content;
+    let content = &file(&result, "t", FileKind::Model).content;
     assert!(
         content.contains("\t// line1 line2\n\tX "),
         "comment flattened to one line, got: {content}"
@@ -370,7 +372,7 @@ fn postgres_ddl_generates_full_three_layer_output() {
             "internal/service/user_service.go",
         ]
     );
-    let model = &result.files[0].content;
+    let model = &file(&result, "users", FileKind::Model).content;
     assert!(model.contains("Id int64 `gorm:\"column:id;primaryKey;autoIncrement;not null\""), "BIGSERIAL -> int64 autoIncrement, got: {model}");
     assert!(model.contains("Balance string"), "numeric -> string");
 }
@@ -383,7 +385,7 @@ fn postgres_comment_on_becomes_go_comments() {
     let mut req = request(ddl);
     req.dialect = Dialect::PostgreSql;
     let result = generate(&req).expect("should generate");
-    let model = &result.files[0].content;
+    let model = &file(&result, "users", FileKind::Model).content;
     assert!(model.contains("// user table"), "table comment, got: {model}");
     assert!(model.contains("\t// the name\n\tName string"), "column comment");
 }
@@ -399,7 +401,7 @@ fn postgres_serial_and_identity_generate_autoincrement() {
     let mut req = request(ddl);
     req.dialect = Dialect::PostgreSql;
     let result = generate(&req).expect("should generate");
-    let model = &result.files[0].content;
+    let model = &file(&result, "users", FileKind::Model).content;
     assert!(model.contains("Id int32 `gorm:\"column:id;primaryKey;autoIncrement;not null\""), "SERIAL -> int32 autoIncrement, got: {model}");
     assert!(model.contains("BigId int64"), "BIGSERIAL -> int64");
     assert!(model.contains("TinyId int16"), "SMALLSERIAL -> int16");
@@ -421,7 +423,7 @@ fn postgres_type_mapping_matches_spec() {
     let mut req = request(ddl);
     req.dialect = Dialect::PostgreSql;
     let result = generate(&req).expect("should generate");
-    let model = &result.files[0].content;
+    let model = &file(&result, "t", FileKind::Model).content;
     assert!(model.contains("Flag bool"), "boolean");
     assert!(model.contains("Amount string"), "numeric -> string");
     assert!(model.contains("Extra json.RawMessage"), "jsonb -> RawMessage (nil expresses null)");

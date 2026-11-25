@@ -1,4 +1,4 @@
-use gorm_generate_core::{generate, export_project, GenerateError, GenerateRequest, GeneratedFile};
+use gorm_generate_core::{generate, export_project, FileKind, GenerateError, GenerateRequest, GeneratedFile};
 use gorm_generate_core::generate::Dialect;
 
 fn request(ddl: &str, dialect: Dialect) -> GenerateRequest {
@@ -9,8 +9,8 @@ fn request(ddl: &str, dialect: Dialect) -> GenerateRequest {
 fn review_primary_key_case_and_types() {
     for dialect in [Dialect::MySql, Dialect::PostgreSql] {
         let p = generate(&request("CREATE TABLE t (id BIGINT NOT NULL, PRIMARY KEY (ID));", dialect)).unwrap();
-        assert!(p.files[1].content.contains("id int64"), "PK must not disappear");
-        assert!(p.files[0].content.contains("primaryKey"));
+        assert!(p.file("t", FileKind::Repository).expect("repo file").content.contains("id int64"), "PK must not disappear");
+        assert!(p.file("t", FileKind::Model).expect("model file").content.contains("primaryKey"));
     }
     let p = generate(&request("CREATE TABLE flags (id TINYINT(1) NOT NULL PRIMARY KEY);", Dialect::MySql)).unwrap();
     for f in p.files.iter().skip(1) { assert!(f.content.contains("id bool"), "{}", f.path); }
@@ -36,17 +36,17 @@ fn review_rejects_unsafe_or_colliding_names() {
 #[test]
 fn review_pg_aliases_and_qualified_comments() {
     let p = generate(&request("COMMENT ON COLUMN public.users.name IS 'display name'; CREATE TABLE public.users (id int8 PRIMARY KEY, name TEXT, n int4, small int2, f float4, d float8);", Dialect::PostgreSql)).unwrap();
-    let model = &p.files[0].content;
+    let model = &p.file("users", FileKind::Model).expect("model file").content;
     for text in ["Id int64", "N *int32", "Small *int16", "F *float32", "D *float64", "// display name"] { assert!(model.contains(text), "missing {text}: {model}"); }
 }
 
 #[test]
 fn review_generated_columns_and_quoted_queries() {
     let p = generate(&request("CREATE TABLE t (`order` BIGINT PRIMARY KEY, total INT GENERATED ALWAYS AS (`order` + 1) STORED);", Dialect::MySql)).unwrap();
-    assert!(p.files[0].content.contains("column:total;->"));
-    assert!(!p.files[0].content.contains("column:total;autoIncrement"));
-    assert!(p.files[1].content.contains("`order` = ?"));
-    assert!(p.files[1].content.contains("page < 1"));
+    assert!(p.file("t", FileKind::Model).expect("model file").content.contains("column:total;->"));
+    assert!(!p.file("t", FileKind::Model).expect("model file").content.contains("column:total;autoIncrement"));
+    assert!(p.file("t", FileKind::Repository).expect("repo file").content.contains("`order` = ?"));
+    assert!(p.file("t", FileKind::Repository).expect("repo file").content.contains("page < 1"));
 }
 
 #[test]
@@ -65,7 +65,7 @@ fn review_validates_options() {
 fn review_export_rejects_duplicate_paths() {
     let dir = std::env::temp_dir().join(format!("gorm-review-duplicate-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let files = (0..2).map(|_| GeneratedFile { path: "a.go".into(), content: "new".into(), table: "t".into() }).collect::<Vec<_>>();
+    let files = (0..2).map(|_| GeneratedFile { path: "a.go".into(), content: "new".into(), table: "t".into(), kind: FileKind::Model }).collect::<Vec<_>>();
     let result = export_project(&dir, &files, true);
     let written = dir.join("a.go").exists();
     std::fs::remove_dir_all(dir).unwrap();
@@ -82,7 +82,7 @@ fn review_export_rejects_symlinks() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::create_dir_all(&outside).unwrap();
     symlink(&outside, dir.join("internal")).unwrap();
-    let files = vec![GeneratedFile { path: "internal/victim.go".into(), content: "new".into(), table: "t".into() }];
+    let files = vec![GeneratedFile { path: "internal/victim.go".into(), content: "new".into(), table: "t".into(), kind: FileKind::Model }];
     let result = export_project(&dir, &files, true);
     let escaped = outside.join("victim.go").exists();
     std::fs::remove_dir_all(dir).unwrap();
@@ -97,13 +97,13 @@ fn review_quoted_pg_keys_respect_case() {
     assert!(matches!(generate(&req), Err(GenerateError::Validation(_))));
     req.ddl = "CREATE TABLE t (\"ID\" BIGINT, PRIMARY KEY (\"ID\"));".into();
     let project = generate(&req).unwrap();
-    assert!(project.files[0].content.contains("primaryKey"));
-    assert!(project.files[1].content.contains("id int64"));
+    assert!(project.file("t", FileKind::Model).expect("model file").content.contains("primaryKey"));
+    assert!(project.file("t", FileKind::Repository).expect("repo file").content.contains("id int64"));
     req.dialect = Dialect::MySql;
     req.ddl = "CREATE TABLE MixedCase (Id BIGINT, PRIMARY KEY (ID));".into();
     let project = generate(&req).unwrap();
-    assert!(project.files[0].content.contains("return \"MixedCase\""));
-    assert!(project.files[1].content.contains("id int64"));
+    assert!(project.file("MixedCase", FileKind::Model).expect("model file").content.contains("return \"MixedCase\""));
+    assert!(project.file("MixedCase", FileKind::Repository).expect("repo file").content.contains("id int64"));
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn review_parse_error_reports_actual_statement() {
 #[test]
 fn review_generated_shorthand_is_read_only() {
     let project = generate(&request("CREATE TABLE t (id INT PRIMARY KEY, total INT AS (id + 1) STORED);", Dialect::MySql)).unwrap();
-    assert!(project.files[0].content.contains("column:total;->"));
+    assert!(project.file("t", FileKind::Model).expect("model file").content.contains("column:total;->"));
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn review_export_staging_failure_preserves_originals() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("original.go"), "original").unwrap();
     std::fs::write(dir.join("blocked"), "not a directory").unwrap();
-    let files = vec![GeneratedFile { path: "original.go".into(), content: "new".into(), table: "t".into() }, GeneratedFile { path: "blocked/later.go".into(), content: "new".into(), table: "t".into() }];
+    let files = vec![GeneratedFile { path: "original.go".into(), content: "new".into(), table: "t".into(), kind: FileKind::Model }, GeneratedFile { path: "blocked/later.go".into(), content: "new".into(), table: "t".into(), kind: FileKind::Model }];
     let result = export_project(&dir, &files, true);
     let original = std::fs::read_to_string(dir.join("original.go")).unwrap();
     let remaining = std::fs::read_dir(&dir).unwrap().count();

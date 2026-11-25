@@ -138,6 +138,7 @@ fn safe_join(dir: &Path, relative: &str) -> Result<PathBuf, ExportError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::generate::FileKind;
 
     fn files() -> Vec<GeneratedFile> {
         vec![
@@ -145,11 +146,13 @@ mod tests {
                 path: "internal/model/user.go".to_string(),
                 content: "package model\n".to_string(),
                 table: "users".to_string(),
+                kind: FileKind::Model,
             },
             GeneratedFile {
                 path: "internal/repository/user_repo.go".to_string(),
                 content: "package repository\n".to_string(),
                 table: "users".to_string(),
+                kind: FileKind::Repository,
             },
         ]
     }
@@ -208,6 +211,7 @@ mod tests {
             path: "internal/model/user.go".to_string(),
             content: "package model // v2\n".to_string(),
             table: "users".to_string(),
+            kind: FileKind::Model,
         }];
         export_project(&dir, &changed, true).expect("overwrite allowed");
 
@@ -226,6 +230,7 @@ mod tests {
             path: "/etc/passwd".to_string(),
             content: "x".to_string(),
             table: "users".to_string(),
+            kind: FileKind::Model,
         }];
         let err = export_project(&dir, &bad, false).expect_err("absolute rejected");
         assert!(matches!(err, ExportError::UnsafePath(_)), "got {err:?}");
@@ -239,6 +244,7 @@ mod tests {
             path: "../escape.go".to_string(),
             content: "x".to_string(),
             table: "users".to_string(),
+            kind: FileKind::Model,
         }];
         let err = export_project(&dir, &bad, false).expect_err("traversal rejected");
         assert!(matches!(err, ExportError::UnsafePath(_)), "got {err:?}");

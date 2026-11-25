@@ -7,10 +7,13 @@ import CodePreview from "@/components/CodePreview.vue"
 import SqlEditor from "@/components/SqlEditor.vue"
 import { Button } from "@/components/ui/button"
 
+type FileKind = "model" | "repository" | "service" | "cache"
+
 interface GeneratedFile {
   path: string
   content: string
   table: string
+  kind: FileKind
 }
 
 interface GeneratedProject {
