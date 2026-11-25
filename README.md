@@ -107,3 +107,4 @@ npm run tauri build -- --bundles app   # 只出 .app
   ```
 
 - `.cargo/config.toml` 是本机的稀疏镜像覆盖，已被 `.git/info/exclude` 排除，不属于仓库内容。
+- 沙箱内 `--test compile` 会在 `goproxy.cn` 上遇到 TLS 校验失败（`x509: OSStatus -26276`），需要在沙箱外或联网环境运行。

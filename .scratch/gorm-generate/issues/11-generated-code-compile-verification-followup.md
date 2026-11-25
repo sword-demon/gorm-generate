@@ -6,13 +6,13 @@
 
 **Blocked by:** 10
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Category:** enhancement
 
-- [ ] `cargo test -p gorm-generate-core --test compile` 在可联网环境下 4 格（MySQL/PG × 缓存开/关）全部 pass
-- [ ] 失败时指出具体模板与失败输出，并附修复提交
-- [ ] 在本 ticket 记录实际 Go 版本、命令与结果
+- [x] `cargo test -p gorm-generate-core --test compile` 在可联网环境下 4 格（MySQL/PG × 缓存开/关）全部 pass
+- [x] 失败时指出具体模板与失败输出，并附修复提交（无失败，无需修复）
+- [x] 在本 ticket 记录实际 Go 版本、命令与结果
 
 ## Comments
 
@@ -21,3 +21,12 @@
 - 沙箱内失败原因与代码无关：`go mod tidy` 访问 `goproxy.cn` 时 TLS 报 `x509: OSStatus -26276`。
 - 本机 cargo 的 target 目录与 sccache 在沙箱内也会报 `Operation not permitted`，可用：`RUSTC_WRAPPER= CARGO_TARGET_DIR="$TMPDIR/cargo-target-review" cargo test -p gorm-generate-core --test compile`。
 - 若 Go 工具链缺失，先确认 `go version`（ticket 10 记录的是 1.27.3）。
+
+2026-11-25: Verified.
+
+- 沙箱内复现了同样的失败：`gorm.io/gorm@v1.31.2: verifying module: Get "https://goproxy.cn/sumdb/sum.golang.org/supported": tls: failed to verify certificate: x509: OSStatus -26276`。与代码无关。
+- 沙箱外（`dangerouslyDisableSandbox`）用同一条命令跑通：
+  `GOCACHE="$TMPDIR/go-build-cache" RUSTC_WRAPPER= CARGO_TARGET_DIR="$TMPDIR/cargo-target-review" cargo test -p gorm-generate-core --test compile`
+- 结果：`generated_code_compiles_across_matrix` 与 `generation_is_idempotent_across_matrix` 均 ok，2 passed / 0 failed，耗时 6.58s（4 格矩阵 + 幂等断言都执行了）。
+- 环境：Go 1.27.3 darwin/arm64，`GOPROXY=https://goproxy.cn,direct`，模块缓存里已有 gorm v1.31.2 与 go-redis v9。
+- 结论：US35 在 `db54731` 之后没有被破坏，无需改模板。
