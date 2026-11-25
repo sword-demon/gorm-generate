@@ -28,4 +28,6 @@
 
 ## Comments
 
-2026-11-26: 落地。真实 `.app` 里的手动复验还没做（WebKit 不接受合成点击，依赖那条链路此前就没验成），新界面本身靠浏览器 dev server 与挂载测试覆盖。
+2026-11-26: 落地。浏览器 dev server 与挂载测试通过。
+
+2026-11-26: 用户在真实 macOS `.app` 中完成验收：配置表单、分隔条拖动、单条依赖复制、Copy all、Export to directory 均成功。此前 agent 的合成点击受 WKWebView 和辅助功能权限限制,不代表应用限制。

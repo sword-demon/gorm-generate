@@ -23,7 +23,7 @@
 - 只支持 MySQL 与 PostgreSQL 的 `CREATE TABLE` / `COMMENT ON`；不连接数据库、不内省 schema。
 - 解析错误定位到语句序号并附出错片段；module path、标识符等语义校验错误不归属具体语句。
 - 不生成 DTO、事务模板、关联预加载与自定义模板。
-- 界面逻辑有挂载测试（`src/App.test.ts`），但导出写盘链路仍只有手动冒烟。
+- 界面逻辑有挂载测试（`src/App.test.ts`），导出写盘链路已通过真实 macOS `.app` 手动冒烟，但还没有自动化 E2E。
 
 ## 技术栈
 

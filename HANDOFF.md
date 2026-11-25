@@ -32,16 +32,15 @@
 
 未验证:
 
-- **GUI 手动冒烟完全没有做**(当前环境起不了窗口):粘贴 → 生成 → 勾选 → 预览 → 复制 → 导出,尤其 ticket 12 改过的"Rust 选择器 → 写盘 → 冲突确认"链路,只有编译期保证。
-- **GUI 手动冒烟做了大半(2026-11-26)**:用 Screen Recording 权限 + `CGWindowList` 拿窗口几何、`CGEvent` 发事件,驱动本地构建的 `.app`。已验证:窗口渲染、**Generate 真的生成了 4 个文件**(model / repository / service / cache),文件树、Go 代码预览(带高亮)、底部依赖行(`gorm.io/gorm`、`github.com/redis/go-redis/v9`)都正常。改动界面后的最新 `.app` 也已重建并截图确认:标题栏单行、配置摘要/齿轮、分隔条、依赖命令均已加载。**本次 agent 没验成的**:配置按钮、分隔条拖动、依赖复制的真实点击 —— 当时合成点击进不了 WKWebView,且本会话的辅助功能权限未授予。用户随后确认自己已授予辅助功能并可正常测通,因此这不是应用限制;待补一份带真实 AX 点击结果的记录。
+- **GUI 手动冒烟已完成(2026-11-26)**:用 Screen Recording / 辅助功能权限驱动本地构建的 `.app`。已验证:窗口渲染、Generate 真的生成了 4 个文件(model / repository / service / cache)、文件树、Go 高亮预览、配置表单(修改选项生效)、SQL 与结果分隔条拖动、单条依赖复制、Copy all、Export to directory,以及底部依赖行(`gorm.io/gorm`、`github.com/redis/go-redis/v9`)。用户确认上述真实交互全部成功。
 - CI 的 `pull_request` 触发没有真实 PR 走过。
 - "故意改坏模板验证 CI 变红"没有做(ticket 15 已注明)。
 - 产物未签名、未公证(`v0.1.1` 的构建日志里 `signed=no notarized=no`)。
 
 ## 4. Ticket 与已知缺口
 
-- `.scratch/gorm-generate/issues/` 下 18 张 ticket **全部 `resolved`**;ticket 18 记录了 CI clippy 与 Tauri 单测的落地,详情在各文件末尾的 Comments。
-- 仍存在的产品限制(已写进 README 的"已知限制"):只支持 MySQL/PG;语义校验错误(module path、标识符、主键)不归属具体语句;界面逻辑有挂载测试,但导出写盘链路仍只有手动冒烟。
+- `.scratch/gorm-generate/issues/` 下 19 张 ticket **全部 `resolved`**;ticket 18 记录了 CI clippy 与 Tauri 单测的落地,ticket 19 记录了本轮界面改动与真实 GUI 验收,详情在各文件末尾的 Comments。
+- 仍存在的产品限制(已写进 README 的"已知限制"):只支持 MySQL/PG;语义校验错误(module path、标识符、主键)不归属具体语句;导出写盘链路目前以真实 GUI 手动冒烟覆盖,尚无自动化 E2E。
 - 历史 review 报告在 `.scratch/gorm-generate/review.md`,其中 A/B 段的修复主题已落库;该文档是快照,别当成当前状态。
 
 ## 5. 沙箱与构建注意
