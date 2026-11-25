@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { ref, watch } from "vue"
+import { onScopeDispose, ref, watch } from "vue"
 
 import { highlight } from "@/lib/highlight"
+
+// Highlighting the whole script on every keystroke would queue one pass per
+// character; typing settles long before that. The first render is immediate so
+// the editor is colored as soon as it mounts.
+const HIGHLIGHT_DEBOUNCE_MS = 120
 
 // Highlighted backdrop behind a transparent textarea: SQL gets syntax color
 // while staying editable. Scroll and metrics stay in sync.
@@ -10,17 +15,26 @@ const html = ref("")
 const backdrop = ref<HTMLElement | null>(null)
 // Guards against a stale async result overwriting a newer one.
 let token = 0
+let debounceTimer: ReturnType<typeof setTimeout> | undefined
 
-watch(
-  model,
-  async (code) => {
-    const mine = ++token
-    const rendered = await highlight(code + "\n", "sql")
-    // Trailing newline keeps the last line's height aligned with the textarea.
-    if (mine === token) html.value = rendered
-  },
-  { immediate: true },
-)
+async function render(code: string) {
+  const mine = ++token
+  const rendered = await highlight(code + "\n", "sql")
+  // Trailing newline keeps the last line's height aligned with the textarea.
+  if (mine === token) html.value = rendered
+}
+
+// First paint is not a keystroke: color it at once rather than after a delay.
+void render(model.value)
+
+watch(model, (code) => {
+  clearTimeout(debounceTimer)
+  // Keep the previous colors up while typing: the text is transparent, so
+  // clearing would flash uncolored until the new pass lands.
+  debounceTimer = setTimeout(() => void render(code), HIGHLIGHT_DEBOUNCE_MS)
+})
+
+onScopeDispose(() => clearTimeout(debounceTimer))
 
 function syncScroll(e: Event) {
   const ta = e.target as HTMLTextAreaElement
