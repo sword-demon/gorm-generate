@@ -7,7 +7,7 @@
 - 路径:`/Volumes/MOVESPEED/study/gorm-generate`;纯本地 Tauri 2 + Vue 3 + Rust 核心的离线 DDL → Go 分层代码生成器。
 - 当前分支 `main`;记录时 HEAD 是承载本文件修订的那次文档提交,位于 `519cd53`(App.vue 挂载测试)之后一格。
 - 远端:`origin git@github.com:sword-demon/gorm-generate.git`,**public**;About 为中文描述,topics 已配置。
-- 唯一的 release 曾经只有 `v0.1.0`(注释 tag 打在 `21155dd`,附 `gorm-generate_0.1.0_aarch64.dmg` 与 `.app.zip`,未签名未公证)。**2026-11-26 新增 `v0.1.1`**:由 `.github/workflows/release.yml` 自动发布,资产为 `gorm-generate_0.1.1_aarch64.dmg` / `gorm-generate_0.1.1_x64.dmg`(以及各自的 `.app.tar.gz`),同样未签名未公证。**`v0.1.2` 正在切**:版本号已 bump 到 `0.1.2`(`Cargo.toml` / `package.json` / 两个 lock),tag 由 `.github/workflows/release.yml` 自动发布。
+- 唯一的 release 曾经只有 `v0.1.0`(注释 tag 打在 `21155dd`,附 `gorm-generate_0.1.0_aarch64.dmg` 与 `.app.zip`,未签名未公证)。**2026-11-26 新增 `v0.1.1`**:由 `.github/workflows/release.yml` 自动发布,资产为 `gorm-generate_0.1.1_aarch64.dmg` / `gorm-generate_0.1.1_x64.dmg`(以及各自的 `.app.tar.gz`),同样未签名未公证。**2026-11-26 又发布 `v0.1.2`**(注释 tag 打在合并 PR #3 的 `20d935f`):资产为 `gorm-generate_0.1.2_aarch64.dmg`(6.07 MiB)/ `gorm-generate_0.1.2_aarch64.app.tar.gz`(6.08 MiB)/ `gorm-generate_0.1.2_x64.dmg`(6.41 MiB)/ `gorm-generate_0.1.2_x64.app.tar.gz`(6.43 MiB),同样未签名未公证。
 - `.cargo/config.toml` 是本机的 rsproxy 稀疏镜像覆盖,被 `.git/info/exclude` 排除,不属于仓库内容;不要提交它。
 - 本地只剩 `main` 分支(37 个已合并的旧分支与对应远端分支已删除);远端也只有 `main`。
 
@@ -27,7 +27,7 @@
 - 本地:`npm run typecheck`、`npm test`、`npm run build` 与上述 Rust 目标均通过;`--test compile` 需在沙箱外运行(见 §5)。
 - 打包:macOS aarch64 `.app`(17.38 MiB)与 `.dmg`(6.06 MiB),图标已嵌入;`.dmg` 需在沙箱外生成。`v0.1.0` release 里的两个资产就是这组构建(另打包了 6.07 MiB 的 `.app.zip`)。
 - 新增 `.github/workflows/release.yml`:tag 触发 → `macos-15`(aarch64)与 `macos-15-intel`(x86_64)各构建一次 → `tauri-apps/tauri-action@v1` 上传 GitHub Release;tag 必须与 `Cargo.toml` 版本一致(构建前校验);签名/公证的 secrets 可选,不配就是未签名产物。
-- **发布流水线已在真实 CI 上跑通一次**:run `45657109208`(2026-11-26),两格都绿,`v0.1.1` 发布成功。第一次跑(`45652646653`)挂在 `tauri-action` 插的 `--` 与我自带的 `--` 叠加,已修(`tauriScript: npm run tauri`,不带 `--`),教训记在 `tasks/lessons.md` 第 8 条。
+- **发布流水线已在真实 CI 上跑通两次**:run `45657109208`(2026-11-26)发布 `v0.1.1`;run `45700406121`(2026-11-26)发布 `v0.1.2`,两格(macos-15 aarch64 / macos-15-intel x64)都绿、资产齐全。第一次跑(`45652646653`)挂在 `tauri-action` 插的 `--` 与我自带的 `--` 叠加,已修(`tauriScript: npm run tauri`,不带 `--`),教训记在 `tasks/lessons.md` 第 8 条。
 - **界面改动(2026-11-26)**:标题栏只留标题、当前配置摘要、生成按钮与最右端的配置按钮(方言/module path/缓存/TTL/`tinyint(1)` 移进表单);SQL 与结果之间加可拖动分隔条(方向键也能调,宽度记进 localStorage);底部依赖可一键复制 `go get` 命令。前端 83 个测试全绿,浏览器 dev server 里验过头部单行、配置表单(勾 Redis 后出现 TTL)、拖动后宽度与持久化。
 - **全仓简化(PR #1 / #2,2026-11-26)**:删掉渲染、解析与前端监听里的重复工作(层契约每张表只算一次、PK import 片段共用一个 helper、解析错误片段改为惰性构造、`ident_value` 只留一份、主键 membership 用集合、窗口监听清理复用同一组函数引用),生成的 Go 产物逐字节不变(黄金 fixture 全绿);顺带修掉两处「测试声称覆盖但其实没断言」的用例。经验记在 `docs/solutions/design-patterns/shared-implementation-versus-shared-computation.md`,术语在 `CONCEPTS.md`。
 
