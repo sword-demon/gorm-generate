@@ -20,9 +20,9 @@ jobs:
     name: frontend (typecheck)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Toolchain pinned to the version used locally (`rustc -V` = 1.90.0).
       # Installed directly via rustup (preinstalled on ubuntu runners) instead
@@ -47,7 +47,7 @@ jobs:
 
       # Source cache only: no target/ cache, so stale artifacts can never mask
       # a compile error.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -56,7 +56,7 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.27.3'
           cache: false
@@ -64,7 +64,7 @@ jobs:
       # The generated projects pin their own go.mod (crates/core/tests/compile.rs),
       # so there is no repo go.sum to hash. Bump this key when those require
       # versions change.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/go/pkg/mod
           key: gomod-gorm-v1.31.2-redis-v9.7.0
