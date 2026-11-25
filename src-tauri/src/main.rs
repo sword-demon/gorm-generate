@@ -4,72 +4,9 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use serde::{Deserialize, Serialize};
+use gorm_generate_core::{GenerateError, GenerateRequest, GeneratedFile, GeneratedProject};
+use serde::Serialize;
 use tauri_plugin_dialog::DialogExt;
-
-/// Request payload from the frontend; mirrors gorm_generate_core options.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct GenerateRequestPayload {
-    ddl: String,
-    dialect: String,
-    module_path: String,
-    cache_enabled: bool,
-    cache_ttl_seconds: u32,
-    tinyint_as_bool: bool,
-}
-
-/// Response payload; files/tables/warnings pass straight through the core.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct GeneratedProjectPayload {
-    files: Vec<GeneratedFilePayload>,
-    tables: Vec<String>,
-    warnings: Vec<String>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct GeneratedFilePayload {
-    path: String,
-    content: String,
-    /// Source table, used by the UI to filter files by selected tables.
-    #[serde(default)]
-    table: String,
-    /// Layer this file belongs to; carried back unchanged by the exporter.
-    kind: FileKindPayload,
-}
-
-/// Mirrors `gorm_generate_core::FileKind` across the IPC seam.
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum FileKindPayload {
-    Model,
-    Repository,
-    Service,
-    Cache,
-}
-
-impl From<gorm_generate_core::FileKind> for FileKindPayload {
-    fn from(kind: gorm_generate_core::FileKind) -> Self {
-        match kind {
-            gorm_generate_core::FileKind::Model => FileKindPayload::Model,
-            gorm_generate_core::FileKind::Repository => FileKindPayload::Repository,
-            gorm_generate_core::FileKind::Service => FileKindPayload::Service,
-            gorm_generate_core::FileKind::Cache => FileKindPayload::Cache,
-        }
-    }
-}
-
-impl From<FileKindPayload> for gorm_generate_core::FileKind {
-    fn from(kind: FileKindPayload) -> Self {
-        match kind {
-            FileKindPayload::Model => gorm_generate_core::FileKind::Model,
-            FileKindPayload::Repository => gorm_generate_core::FileKind::Repository,
-            FileKindPayload::Service => gorm_generate_core::FileKind::Service,
-            FileKindPayload::Cache => gorm_generate_core::FileKind::Cache,
-        }
-    }
-}
 
 /// IPC layer only forwards: parsing and generation live in `gorm-generate-core`.
 #[tauri::command]
@@ -77,77 +14,11 @@ fn ping() -> String {
     gorm_generate_core::ping()
 }
 
-/// Thin wrapper over the core `generate` seam. Returns a tagged error so the
-/// UI can tell a broken DDL from invalid options without interpreting a
-/// sentinel value.
+/// Thin wrapper over the core `generate` seam. The request and the tagged
+/// error are core types; the core owns their wire format.
 #[tauri::command(async)]
-fn generate_project(
-    request: GenerateRequestPayload,
-) -> Result<GeneratedProjectPayload, GenerateErrorPayload> {
-    let dialect = match request.dialect.as_str() {
-        "mysql" => gorm_generate_core::generate::Dialect::MySql,
-        "postgres" => gorm_generate_core::generate::Dialect::PostgreSql,
-        other => {
-            return Err(GenerateErrorPayload::Validation {
-                message: format!("unsupported dialect `{other}`"),
-            })
-        }
-    };
-    let core_request = gorm_generate_core::GenerateRequest {
-        ddl: request.ddl,
-        dialect,
-        module_path: request.module_path,
-        cache_enabled: request.cache_enabled,
-        cache_ttl_seconds: request.cache_ttl_seconds,
-        tinyint_as_bool: request.tinyint_as_bool,
-    };
-    gorm_generate_core::generate(&core_request)
-        .map(|project| GeneratedProjectPayload {
-            files: project
-                .files
-                .into_iter()
-                .map(|f| GeneratedFilePayload {
-                    path: f.path,
-                    content: f.content,
-                    table: f.table,
-                    kind: f.kind.into(),
-                })
-                .collect(),
-            tables: project.tables,
-            warnings: project.warnings,
-        })
-        .map_err(GenerateErrorPayload::from)
-}
-
-/// Structured generation failure for the frontend, internally tagged by `kind`.
-#[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-enum GenerateErrorPayload {
-    Parse {
-        #[serde(rename = "statementIndex")]
-        statement_index: usize,
-        snippet: String,
-    },
-    Validation {
-        message: String,
-    },
-}
-
-impl From<gorm_generate_core::GenerateError> for GenerateErrorPayload {
-    fn from(error: gorm_generate_core::GenerateError) -> Self {
-        match error {
-            gorm_generate_core::GenerateError::Parse {
-                statement_index,
-                snippet,
-            } => GenerateErrorPayload::Parse {
-                statement_index,
-                snippet,
-            },
-            gorm_generate_core::GenerateError::Validation(message) => {
-                GenerateErrorPayload::Validation { message }
-            }
-        }
-    }
+fn generate_project(request: GenerateRequest) -> Result<GeneratedProject, GenerateError> {
+    gorm_generate_core::generate(&request)
 }
 
 /// Result of an export attempt. `conflicts` is non-empty when existing files
@@ -208,7 +79,7 @@ async fn pick_export_dir(
 #[tauri::command(async)]
 fn export_project(
     state: tauri::State<'_, ExportRoot>,
-    files: Vec<GeneratedFilePayload>,
+    files: Vec<GeneratedFile>,
     overwrite: bool,
 ) -> ExportResultPayload {
     let root = match confirmed_root(&state.0) {
@@ -221,17 +92,7 @@ fn export_project(
         }
     };
 
-    let generated: Vec<gorm_generate_core::GeneratedFile> = files
-        .into_iter()
-        .map(|f| gorm_generate_core::GeneratedFile {
-            path: f.path,
-            content: f.content,
-            table: f.table,
-            kind: f.kind.into(),
-        })
-        .collect();
-
-    match gorm_generate_core::export_project(&root, &generated, overwrite) {
+    match gorm_generate_core::export_project(&root, &files, overwrite) {
         Ok(()) => ExportResultPayload {
             conflicts: Vec::new(),
             error: None,

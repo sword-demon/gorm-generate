@@ -29,7 +29,7 @@ fn review_rejects_unsafe_or_colliding_names() {
         "CREATE TABLE `we\"ird` (id BIGINT);",
         "CREATE TABLE t (`we\"ird` TEXT);",
     ] {
-        assert!(matches!(generate(&request(ddl, Dialect::MySql)), Err(GenerateError::Validation(_))), "must reject: {ddl}");
+        assert!(matches!(generate(&request(ddl, Dialect::MySql)), Err(GenerateError::Validation { .. })), "must reject: {ddl}");
     }
 }
 
@@ -54,11 +54,11 @@ fn review_validates_options() {
     let mut req = request("CREATE TABLE t (id BIGINT PRIMARY KEY);", Dialect::MySql);
     for module in ["", "my module", "bad\"path", "bad\npath", "/absolute", "a/../b"] {
         req.module_path = module.into();
-        assert!(matches!(generate(&req), Err(GenerateError::Validation(_))), "invalid module: {module:?}");
+        assert!(matches!(generate(&req), Err(GenerateError::Validation { .. })), "invalid module: {module:?}");
     }
     req.module_path = "example.com/app".into();
     req.cache_ttl_seconds = 0;
-    assert!(matches!(generate(&req), Err(GenerateError::Validation(_))));
+    assert!(matches!(generate(&req), Err(GenerateError::Validation { .. })));
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn review_export_rejects_symlinks() {
 #[test]
 fn review_quoted_pg_keys_respect_case() {
     let mut req = request("CREATE TABLE t (\"ID\" BIGINT, PRIMARY KEY (id));", Dialect::PostgreSql);
-    assert!(matches!(generate(&req), Err(GenerateError::Validation(_))));
+    assert!(matches!(generate(&req), Err(GenerateError::Validation { .. })));
     req.ddl = "CREATE TABLE t (\"ID\" BIGINT, PRIMARY KEY (\"ID\"));".into();
     let project = generate(&req).unwrap();
     assert!(project.file("t", FileKind::Model).expect("model file").content.contains("primaryKey"));

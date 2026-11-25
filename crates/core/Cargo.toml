@@ -7,3 +7,12 @@ license.workspace = true
 [dependencies]
 sqlparser = "0.64"
 tempfile = "3"
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+# Serialize the public types for an IPC adapter (the Tauri layer). Off by
+# default so the core has no serialization dependency of its own.
+serde = ["dep:serde"]
+
+[dev-dependencies]
+serde_json = "1"

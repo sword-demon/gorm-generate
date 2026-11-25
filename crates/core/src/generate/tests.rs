@@ -114,7 +114,7 @@ fn digit_leading_generated_identifier_is_rejected() {
 
 fn validation_message(error: GenerateError) -> String {
     match error {
-        GenerateError::Validation(message) => message,
+        GenerateError::Validation { message } => message,
         other => panic!("expected a validation error, got {other:?}"),
     }
 }

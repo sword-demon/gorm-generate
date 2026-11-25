@@ -75,6 +75,11 @@ jobs:
       - name: cargo test review_regressions
         run: cargo test -p gorm-generate-core --test review_regressions
 
+      # Pins the IPC wire format, which only exists with the serde feature
+      # (ADR-0004); the default build above proves core stays serde-free.
+      - name: cargo test wire_format (serde feature)
+        run: cargo test -p gorm-generate-core --test wire_format --features serde
+
       # Needs Go on PATH and network for `go mod tidy` inside each temp project.
       - name: cargo test compile (go build matrix)
         run: cargo test -p gorm-generate-core --test compile

@@ -199,11 +199,11 @@ fn extract_primary_key(columns: &[ColumnDef], constraints: &[TableConstraint], d
             return pk.columns.iter().map(|c| {
                 let key = match &c.column.expr {
                     sqlparser::ast::Expr::Identifier(ident) => identifier_key(ident, dialect),
-                    _ => return Err(GenerateError::Validation("unsupported primary key expression or prefix index".into())),
+                    _ => return Err(GenerateError::Validation { message: "unsupported primary key expression or prefix index".into() }),
                 };
-                columns.iter().find(|c| identifier_key(&c.name, dialect) == key).map(|c| c.name.value.clone()).ok_or_else(|| GenerateError::Validation(
-                    format!("primary key column `{key}` does not exist"),
-                ))
+                columns.iter().find(|c| identifier_key(&c.name, dialect) == key).map(|c| c.name.value.clone()).ok_or_else(|| GenerateError::Validation {
+                    message: format!("primary key column `{key}` does not exist"),
+                })
             }).collect();
         }
     }

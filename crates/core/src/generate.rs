@@ -11,13 +11,18 @@ mod tests;
 
 /// Source database dialect of the DDL script.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 pub enum Dialect {
+    #[cfg_attr(feature = "serde", serde(rename = "mysql"))]
     MySql,
+    #[cfg_attr(feature = "serde", serde(rename = "postgres"))]
     PostgreSql,
 }
 
 /// Everything the generator needs; UI-facing options map 1:1.
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct GenerateRequest {
     pub ddl: String,
     pub dialect: Dialect,
@@ -29,6 +34,8 @@ pub struct GenerateRequest {
 
 /// Which layer a generated file belongs to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum FileKind {
     Model,
     Repository,
@@ -40,6 +47,7 @@ pub enum FileKind {
 /// table so the UI can filter files by selected tables; `kind` names the
 /// layer, so callers can address a file without knowing the order or path.
 #[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GeneratedFile {
     pub path: String,
     pub content: String,
@@ -49,6 +57,7 @@ pub struct GeneratedFile {
 
 /// Full output of one generation run. Pure: same request, byte-identical result.
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct GeneratedProject {
     pub files: Vec<GeneratedFile>,
     pub tables: Vec<String>,
@@ -69,14 +78,19 @@ impl GeneratedProject {
 /// generated names did not validate. The distinction is a type, not a
 /// sentinel value, because callers render the two differently.
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(tag = "kind", rename_all = "camelCase"))]
 pub enum GenerateError {
     /// The DDL failed to parse. `statement_index` is 1-based.
     Parse {
+        #[cfg_attr(feature = "serde", serde(rename = "statementIndex"))]
         statement_index: usize,
         snippet: String,
     },
     /// The request or the generated identifiers violate a rule.
-    Validation(String),
+    Validation {
+        message: String,
+    },
 }
 
 /// Generates the layered Go project from a DDL script. No IO.
@@ -217,7 +231,7 @@ fn render_model(table: &Table) -> GeneratedFile {
     }
 }
 
-fn invalid(message: String) -> GenerateError { GenerateError::Validation(message) }
+fn invalid(message: String) -> GenerateError { GenerateError::Validation { message } }
 
 fn validate_request(request: &GenerateRequest) -> Result<(), GenerateError> {
     let path = &request.module_path;
