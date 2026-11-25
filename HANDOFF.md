@@ -7,7 +7,7 @@
 - 路径:`/Volumes/MOVESPEED/study/gorm-generate`;纯本地 Tauri 2 + Vue 3 + Rust 核心的离线 DDL → Go 分层代码生成器。
 - 当前分支 `main`;记录时 HEAD 是承载本文件修订的那次文档提交,位于 `519cd53`(App.vue 挂载测试)之后一格。
 - 远端:`origin git@github.com:sword-demon/gorm-generate.git`,**public**;About 为中文描述,topics 已配置。
-- 唯一的 release:`v0.1.0`,注释 tag 打在 `21155dd`,附 `gorm-generate_0.1.0_aarch64.dmg` 与 `.app.zip`,未签名未公证;正文在 GitHub 上,没有入库的副本。此后没有新 release,main 已远在该 tag 之前。
+- 唯一的 release 曾经只有 `v0.1.0`(注释 tag 打在 `21155dd`,附 `gorm-generate_0.1.0_aarch64.dmg` 与 `.app.zip`,未签名未公证)。**2026-11-26 新增 `v0.1.1`**:由 `.github/workflows/release.yml` 自动发布,资产为 `gorm-generate_0.1.1_aarch64.dmg` / `gorm-generate_0.1.1_x64.dmg`(以及各自的 `.app.tar.gz`),同样未签名未公证。
 - `.cargo/config.toml` 是本机的 rsproxy 稀疏镜像覆盖,被 `.git/info/exclude` 排除,不属于仓库内容;不要提交它。
 - 本地有 35 个以上的分支,全部已合入 `main`(`git branch --merged main` 可一次列出),可安全删除;尚未清理。
 
@@ -27,14 +27,14 @@
 - 本地:`npm run typecheck`、`npm test`、`npm run build` 与上述 Rust 目标均通过;`--test compile` 需在沙箱外运行(见 §5)。
 - 打包:macOS aarch64 `.app`(17.38 MiB)与 `.dmg`(6.06 MiB),图标已嵌入;`.dmg` 需在沙箱外生成。`v0.1.0` release 里的两个资产就是这组构建(另打包了 6.07 MiB 的 `.app.zip`)。
 - 新增 `.github/workflows/release.yml`:tag 触发 → `macos-15`(aarch64)与 `macos-15-intel`(x86_64)各构建一次 → `tauri-apps/tauri-action@v1` 上传 GitHub Release;tag 必须与 `Cargo.toml` 版本一致(构建前校验);签名/公证的 secrets 可选,不配就是未签名产物。
+- **发布流水线已在真实 CI 上跑通一次**:run `45657109208`(2026-11-26),两格都绿,`v0.1.1` 发布成功。第一次跑(`45652646653`)挂在 `tauri-action` 插的 `--` 与我自带的 `--` 叠加,已修(`tauriScript: npm run tauri`,不带 `--`),教训记在 `tasks/lessons.md` 第 8 条。
 
 未验证:
 
 - **GUI 手动冒烟完全没有做**(当前环境起不了窗口):粘贴 → 生成 → 勾选 → 预览 → 复制 → 导出,尤其 ticket 12 改过的"Rust 选择器 → 写盘 → 冲突确认"链路,只有编译期保证。
 - CI 的 `pull_request` 触发没有真实 PR 走过。
 - "故意改坏模板验证 CI 变红"没有做(ticket 15 已注明)。
-- 产物未签名、未公证。
-- **`release.yml` 没有在 CI 上真跑过**:YAML、每个 `run` 块(`bash -n`)与 tag/版本校验逻辑本地验过,`npm run tauri -- build --target <t>` 的参数拼法验过;首次真实运行仍可能要调(runner 标签、`macos-15-intel` 的可用期到 2027-08、tauri-action v1 的行为)。
+- 产物未签名、未公证(`v0.1.1` 的构建日志里 `signed=no notarized=no`)。
 
 ## 4. Ticket 与已知缺口
 
