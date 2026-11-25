@@ -44,6 +44,39 @@ fn parse_error_reports_statement_and_snippet() {
 }
 
 #[test]
+fn dependencies_follow_what_was_emitted() {
+    // A table without a primary key only produces a model. Without
+    // `deleted_at` that model imports nothing, so there is nothing to get.
+    let model_only = generate(&request("CREATE TABLE logs (msg TEXT NOT NULL);")).unwrap();
+    assert!(model_only.dependencies.is_empty(), "{:?}", model_only.dependencies);
+
+    // `deleted_at` pulls gorm into the model even without a primary key.
+    let soft_delete = generate(&request(
+        "CREATE TABLE logs (msg TEXT NOT NULL, deleted_at DATETIME NULL);",
+    ))
+    .unwrap();
+    assert_eq!(soft_delete.dependencies, vec!["gorm.io/gorm"]);
+
+    // A primary key yields repository files, which always import gorm.
+    let mut req = request("CREATE TABLE users (id BIGINT PRIMARY KEY);");
+    req.cache_ttl_seconds = 300;
+    let plain = generate(&req).unwrap();
+    assert_eq!(plain.dependencies, vec!["gorm.io/gorm"]);
+
+    req.cache_enabled = true;
+    let cached = generate(&req).unwrap();
+    assert_eq!(
+        cached.dependencies,
+        vec!["gorm.io/gorm", "github.com/redis/go-redis/v9"]
+    );
+
+    // Cache enabled but no table can use it: no cache file, no redis hint.
+    req.ddl = "CREATE TABLE logs (msg TEXT NOT NULL);".into();
+    let cached_model_only = generate(&req).unwrap();
+    assert!(cached_model_only.dependencies.is_empty(), "{:?}", cached_model_only.dependencies);
+}
+
+#[test]
 fn maps_column_types_to_go_types() {
     let ddl = "CREATE TABLE `t` (\
         `i` INT NOT NULL, \

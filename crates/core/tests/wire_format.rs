@@ -47,9 +47,10 @@ fn project_serializes_files_with_their_kind() {
     .expect("should generate");
 
     let json = serde_json::to_value(&project).expect("project serializes");
-    for key in ["files", "tables", "warnings"] {
+    for key in ["files", "tables", "warnings", "dependencies"] {
         assert!(json.get(key).is_some(), "missing {key}");
     }
+    assert_eq!(json["dependencies"][0], "gorm.io/gorm");
 
     let file = &json["files"][0];
     for key in ["path", "content", "table", "kind"] {

@@ -54,7 +54,7 @@ Go 开发者拿到建表语句后，需要手写模型、仓储、服务接口�
 
 - **架构**: 纯本地 Tauri 2 应用。Rust 核心库负责解析与生成，Tauri 命令是薄包装；Vue 前端只负责表单、预览与导出交互。遵循 ADR-0001（DDL 文本输入与自研分层生成）。
 - **输入**: DDL 文本 + 方言枚举（MySQL | PostgreSQL）。只处理 `CREATE TABLE` 与 PG 的 `COMMENT ON`；其他语句忽略并计入警告。解析失败返回结构化错误（语句序号 + 片段）。
-- **生成核心 API**: `generate(request) -> GeneratedProject`。请求含 DDL 文本、方言、module path、缓存开关、缓存 TTL、`tinyint(1)` 开关；结果含文件集合（相对路径 + 内容）、表清单、警告列表。纯函数、无 IO、同输入字节级同输出。
+- **生成核心 API**: `generate(request) -> GeneratedProject`。请求含 DDL 文本、方言、module path、缓存开关、缓存 TTL、`tinyint(1)` 开关；结果含文件集合（相对路径 + 内容）、表清单、警告列表、依赖清单（由实际生成的文件推导，供 `go get` 提示）。纯函数、无 IO、同输入字节级同输出。
 - **产物目录**: `internal/model`、`internal/repository`、`internal/service`、`internal/cache`（仅缓存开启时）。文件按表命名：`user.go`、`user_repo.go`、`user_service.go`、`user_cache.go`；接口与实现在同一文件。module path 决定 import 前缀。
 - **模型规则**: 严格按 DDL，不嵌 `gorm.Model`，不添加 DDL 之外的字段；总是生成 `TableName()`；gorm tag 仅保留 `column`/`primaryKey`/`autoIncrement`/`not null`，生成列（`GENERATED ... AS (...)`）另加 `->`（只读）；JSON tag 使用列名原样；不生成外键关联字段；不生成 `index`/`uniqueIndex`/`default`/`type`/`size` tag（DDL 是索引与默认值的事实源）。
 - **类型映射**: 可空列用指针（`[]byte` 与 `json.RawMessage` 例外：nil 已表达 null，不再取指针）；`decimal`/`numeric` → `string`；`json`/`jsonb` → `json.RawMessage`；`enum`/`set` → `string`；`blob`/`binary`/`bytea` → `[]byte`；时间类型 → `time.Time`；MySQL unsigned 按宽度映射 `uint8/16/32/64`；未知类型 → `any` + 警告。`tinyint(1)` 默认 `int8`/`uint8`，开关打开后为 `bool`。`deleted_at` → `gorm.DeletedAt`（软删除）。`SERIAL`/`BIGSERIAL`/`SMALLSERIAL`/`GENERATED ... AS IDENTITY` → `autoIncrement`。

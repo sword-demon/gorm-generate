@@ -62,6 +62,9 @@ pub struct GeneratedProject {
     pub files: Vec<GeneratedFile>,
     pub tables: Vec<String>,
     pub warnings: Vec<String>,
+    /// Third-party modules the generated files import, in `go get` order.
+    /// Derived from what was emitted, not from the request switches.
+    pub dependencies: Vec<String>,
 }
 
 impl GeneratedProject {
@@ -145,7 +148,28 @@ pub fn generate(request: &GenerateRequest) -> Result<GeneratedProject, GenerateE
         files,
         tables: table_names,
         warnings,
+        dependencies: dependencies(&tables, request),
     })
+}
+
+/// The `go get` targets the emitted files need. Read from what each table
+/// actually produced: a model without `deleted_at` and a table without a
+/// primary key import neither gorm nor redis, so neither is suggested.
+fn dependencies(tables: &[Table], request: &GenerateRequest) -> Vec<String> {
+    let mut dependencies = Vec::new();
+    // Repository files always import gorm; a model imports it only for
+    // gorm.DeletedAt, which is already folded into `imports.gorm`.
+    if tables
+        .iter()
+        .any(|table| table.has_layers() || table.imports.gorm)
+    {
+        dependencies.push("gorm.io/gorm".to_string());
+    }
+    // Cache files exist only for tables with a primary key.
+    if request.cache_enabled && tables.iter().any(Table::has_layers) {
+        dependencies.push("github.com/redis/go-redis/v9".to_string());
+    }
+    dependencies
 }
 
 /// Renders `internal/model/<table>.go`. Formatting only: every fact comes from

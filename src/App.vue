@@ -20,6 +20,7 @@ interface GeneratedProject {
   files: GeneratedFile[]
   tables: string[]
   warnings: string[]
+  dependencies: string[]
 }
 
 type GenerateError =
@@ -173,12 +174,6 @@ async function generate() {
   copyError.value = ""
   toastDismissed.value = false
   try {
-    if (!modulePath.value || modulePath.value.split("/").some((part) => !part || part === "." || part === ".." || part.startsWith(".") || part.endsWith(".")) || !/^[A-Za-z0-9._~/-]+$/.test(modulePath.value)) {
-      throw new Error("Enter a valid Go module path without spaces, quotes or traversal.")
-    }
-    if (cacheEnabled.value && (typeof cacheTtlSeconds.value !== "number" || !Number.isInteger(cacheTtlSeconds.value) || cacheTtlSeconds.value < 1 || cacheTtlSeconds.value > 4294967295)) {
-      throw new Error("Cache TTL must be an integer from 1 to 4294967295 seconds.")
-    }
     project.value = await invoke<GeneratedProject>("generate_project", {
       request: {
         ddl: ddl.value,
@@ -276,13 +271,9 @@ const allContent = computed(() =>
   visibleFiles.value.map((f) => `// ==== ${f.path} ====\n${f.content}`).join("\n"),
 )
 
-// Dependency hints follow the current switches. Mirrors the imports emitted
-// by crates/core/src/layers.rs — keep the two in sync.
-const goGetDeps = computed(() => {
-  const deps = ["gorm.io/gorm"]
-  if (cacheEnabled.value) deps.push("github.com/redis/go-redis/v9")
-  return deps
-})
+// Dependency hints come from the core, which derives them from the files it
+// actually emitted; the UI no longer re-derives them from the switches.
+const dependencies = computed(() => project.value?.dependencies ?? [])
 
 // Parse error toast: shown right after a failed generate, dismissible.
 const showErrorToast = computed(() => error.value !== null && !toastDismissed.value)
@@ -486,7 +477,7 @@ function dismissToast() {
           >
             <span class="font-medium">Dependencies</span>
             <code
-              v-for="dep in goGetDeps"
+              v-for="dep in dependencies"
               :key="dep"
               class="rounded bg-muted px-1.5 py-0.5 font-mono"
             >go get {{ dep }}</code>
