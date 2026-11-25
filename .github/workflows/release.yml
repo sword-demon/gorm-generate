@@ -141,9 +141,11 @@ jobs:
           uploadUpdaterJson: false
           uploadWorkflowArtifacts: true
           retryAttempts: 2
-          # `npm run tauri -- build …` — the `--` keeps the target flag with
-          # npm instead of letting npm claim it.
-          tauriScript: npm run tauri --
+          # The action runs `<tauriScript> build -- <args>`; npm consumes that
+          # separator, so the CLI sees `tauri build --target <arch>`. Do not
+          # put a second `--` in tauriScript: it would survive as a literal
+          # argument and push `--target` past the CLI's own flag parsing.
+          tauriScript: npm run tauri
           args: --target ${{ matrix.target }}
 
       - name: Report the signing state
