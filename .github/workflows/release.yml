@@ -97,7 +97,12 @@ jobs:
             - `gorm-generate_*_aarch64.dmg` —— Apple Silicon(M1 及以上)
             - `gorm-generate_*_x64.dmg` —— Intel
 
-            首次打开若被 Gatekeeper 拦截(未签名产物),见 README 的「打包与发布」。
+            产物未签名、未公证。首次打开被 Gatekeeper 拦截时:
+            1. 把 `gorm-generate` 拖到「应用程序」,然后退出磁盘映像;
+            2. 在「应用程序」里按住 Control 点击 `gorm-generate`,选择「打开」;
+            3. 仍被拦截就到「系统设置 → 隐私与安全性」点「仍要打开」。
+
+            请只从本仓库的 Release 下载产物。
           releaseDraft: false
           prerelease: false
           generateReleaseNotes: true
