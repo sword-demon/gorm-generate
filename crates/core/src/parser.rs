@@ -45,15 +45,19 @@ pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, GenerateEr
         while parser.consume_token(&Token::SemiColon) {}
         if parser.peek_token().token == Token::EOF { break; }
         let start = parser.peek_token().span.start;
-        let remaining: String = ddl.lines().skip(start.line.saturating_sub(1) as usize)
-            .enumerate().map(|(i, line)| if i == 0 { line.chars().skip(start.column.saturating_sub(1) as usize).collect::<String>() } else { format!("\n{line}") }).collect();
         let statement = parser.parse_statement().map_err(|e| GenerateError::Parse {
             statement_index: statements.len() + 1,
-            snippet: format!("{e}\n{}", remaining.chars().take(500).collect::<String>()),
+            snippet: format!("{e}\n{}", statement_snippet(ddl, start.line, start.column)),
         })?;
         statements.push(statement);
         if parser.peek_token().token != Token::EOF && !parser.consume_token(&Token::SemiColon) {
-            return Err(GenerateError::Parse { statement_index: statements.len(), snippet: format!("expected semicolon\n{}", remaining.chars().take(500).collect::<String>()) });
+            return Err(GenerateError::Parse {
+                statement_index: statements.len(),
+                snippet: format!(
+                    "expected semicolon\n{}",
+                    statement_snippet(ddl, start.line, start.column)
+                ),
+            });
         }
     }
 
@@ -175,6 +179,30 @@ fn comment_text(def: &sqlparser::ast::CommentDef) -> String {
     }
 }
 
+fn statement_snippet(ddl: &str, line: u64, column: u64) -> String {
+    let mut snippet = String::new();
+    for (index, source_line) in ddl
+        .lines()
+        .skip(line.saturating_sub(1) as usize)
+        .enumerate()
+    {
+        if index > 0 {
+            snippet.push('\n');
+        }
+        let start = if index == 0 {
+            column.saturating_sub(1) as usize
+        } else {
+            0
+        };
+        let remaining = 500usize.saturating_sub(snippet.chars().count());
+        snippet.extend(source_line.chars().skip(start).take(remaining));
+        if snippet.chars().count() >= 500 {
+            break;
+        }
+    }
+    snippet
+}
+
 /// Extracts a column's `COMMENT '...'` option, if present.
 pub fn column_comment(col: &ColumnDef) -> Option<String> {
     col.options.iter().find_map(|opt| match &opt.option {
@@ -242,7 +270,7 @@ pub fn is_serial(data_type: &DataType) -> bool {
     false
 }
 
-fn ident_value(part: &sqlparser::ast::ObjectNamePart) -> String {
+pub(crate) fn ident_value(part: &sqlparser::ast::ObjectNamePart) -> String {
     match part {
         sqlparser::ast::ObjectNamePart::Identifier(ident) => ident.value.clone(),
         _ => String::new(),

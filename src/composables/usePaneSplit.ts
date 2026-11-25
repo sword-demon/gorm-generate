@@ -32,20 +32,21 @@ export function usePaneSplit(
   function onPointerUp() {
     if (!dragging.value) return
     dragging.value = false
-    window.removeEventListener("pointermove", handleWindowMove)
-    window.removeEventListener("pointerup", handleWindowUp)
-    window.removeEventListener("pointercancel", handleWindowUp)
+    removeWindowListeners()
   }
 
-  const handleWindowMove = (event: PointerEvent) => onPointerMove(event)
-  const handleWindowUp = () => onPointerUp()
+  function removeWindowListeners() {
+    window.removeEventListener("pointermove", onPointerMove)
+    window.removeEventListener("pointerup", onPointerUp)
+    window.removeEventListener("pointercancel", onPointerUp)
+  }
 
   function onPointerDown(event: PointerEvent) {
     dragging.value = true
     setFromClientX(event.clientX)
-    window.addEventListener("pointermove", handleWindowMove)
-    window.addEventListener("pointerup", handleWindowUp)
-    window.addEventListener("pointercancel", handleWindowUp)
+    window.addEventListener("pointermove", onPointerMove)
+    window.addEventListener("pointerup", onPointerUp)
+    window.addEventListener("pointercancel", onPointerUp)
     event.preventDefault()
   }
 
@@ -73,9 +74,7 @@ export function usePaneSplit(
 
   if (getCurrentScope()) {
     onScopeDispose(() => {
-      window.removeEventListener("pointermove", handleWindowMove)
-      window.removeEventListener("pointerup", handleWindowUp)
-      window.removeEventListener("pointercancel", handleWindowUp)
+      removeWindowListeners()
     })
   }
 

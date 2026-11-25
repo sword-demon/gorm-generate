@@ -1,6 +1,3 @@
-// The settings the app persists: one ref per field, saved to localStorage on a
-// short debounce and flushed on page hide or scope disposal.
-
 import { onScopeDispose, ref, watch } from "vue"
 
 import { loadState, STORAGE_KEY } from "@/lib/settings"
@@ -40,16 +37,12 @@ export function useSettings() {
     }
   }
 
-  function flushState() {
-    saveState()
-  }
-
-  window.addEventListener("pagehide", flushState)
+  window.addEventListener("pagehide", saveState)
   // `onScopeDispose` also fires when the owning component unmounts, and works
   // under a bare effect scope in tests.
   onScopeDispose(() => {
     saveState()
-    window.removeEventListener("pagehide", flushState)
+    window.removeEventListener("pagehide", saveState)
   })
 
   // Debounce synchronous storage writes during typing.

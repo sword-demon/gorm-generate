@@ -87,13 +87,14 @@ pub(crate) fn resolve_table(table: &ParsedTable, tinyint_as_bool: bool) -> Table
         .iter()
         .filter_map(|pk| table.columns.iter().position(|c| c.name.value == *pk))
         .collect();
+    let pk_index_set: std::collections::HashSet<usize> = pk_indices.iter().copied().collect();
 
     let mut imports = Imports::default();
     let mut warnings = Vec::new();
     let mut columns = Vec::with_capacity(table.columns.len());
 
     for (index, col) in table.columns.iter().enumerate() {
-        let is_pk = pk_indices.contains(&index);
+        let is_pk = pk_index_set.contains(&index);
         // A column is nullable unless declared NOT NULL. Primary keys are
         // never nullable regardless of declaration.
         let declared_not_null = col

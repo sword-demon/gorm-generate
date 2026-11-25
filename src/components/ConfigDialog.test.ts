@@ -54,7 +54,6 @@ describe("ConfigDialog", () => {
     const { wrapper, state } = mountDialog()
 
     await wrapper.find("select").setValue("postgres")
-    await wrapper.find('input[type="number"]').exists()
     await wrapper.findAll("input[type=checkbox]")[1].setValue(true)
 
     expect(state.dialect.value).toBe("postgres")
@@ -80,7 +79,7 @@ describe("ConfigDialog", () => {
 
     state.open.value = true
     await wrapper.vm.$nextTick()
-    await wrapper.find('button[aria-label="Close"]').trigger("click")
+    await wrapper.find(".fixed.inset-0").trigger("click.self")
     expect(state.open.value).toBe(false)
   })
 })
