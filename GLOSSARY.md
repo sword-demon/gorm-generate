@@ -16,6 +16,10 @@ _Avoid_: 数据库类型、db type
 一次生成输出的全部文件及其目录结构。
 _Avoid_: 输出、结果
 
+**已解析表 (Resolved Table)**:
+一张 DDL 表在 Go 侧的事实集合：结构体名、文件基名、实现类型基名、字段（Go 名、Go 类型、gorm 标记、原始注释）、主键索引、条件 import、缓存 key 格式与该表产生的警告。渲染器只读它，不再自行推导类型或命名。
+_Avoid_: 表模型、TableShape
+
 **模型 (Model)**:
 一张表在 Go 中的结构体表示，含 GORM 标签与表名方法。
 _Avoid_: 实体 (Entity)、PO

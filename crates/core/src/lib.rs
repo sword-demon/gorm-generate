@@ -8,6 +8,7 @@ pub mod generate;
 pub mod layers;
 pub mod naming;
 pub mod parser;
+mod resolve;
 pub mod types;
 
 pub use export::{export_project, ExportError};
