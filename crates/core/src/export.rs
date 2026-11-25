@@ -2,6 +2,10 @@
 //!
 //! Paths come from the generator and are project-relative. Anything that
 //! escapes the target directory (absolute paths, `..`) is rejected.
+//!
+//! Export is split in two: `plan_export` decides *where* every file goes
+//! (pure — no filesystem access), and `write_plan` puts it there. All the
+//! path algebra is tested through the plan alone (ADR-0006).
 
 use std::path::{Component, Path, PathBuf};
 
@@ -42,33 +46,64 @@ pub fn export_project(
     files: &[GeneratedFile],
     overwrite: bool,
 ) -> Result<(), ExportError> {
+    write_plan(&plan_export(dir, files)?, overwrite)
+}
+
+/// One resolved write: the declared path (for error messages and conflict
+/// reporting), its absolute target under the plan's root, and the bytes.
+#[derive(Debug)]
+struct PlannedWrite<'a> {
+    path: &'a str,
+    target: PathBuf,
+    content: &'a str,
+}
+
+/// Every write of an export, resolved and validated. Building one touches no
+/// filesystem.
+#[derive(Debug)]
+struct WritePlan<'a> {
+    root: PathBuf,
+    writes: Vec<PlannedWrite<'a>>,
+}
+
+/// Decides where each file goes. Pure: the root must be absolute, each path is
+/// joined only if it stays inside the root, and two files may not share a
+/// target.
+fn plan_export<'a>(dir: &Path, files: &'a [GeneratedFile]) -> Result<WritePlan<'a>, ExportError> {
     if !dir.is_absolute() {
         return Err(ExportError::UnsafePath(dir.display().to_string()));
     }
     let mut seen = std::collections::HashSet::new();
-    let mut targets = Vec::with_capacity(files.len());
+    let mut writes = Vec::with_capacity(files.len());
     for file in files {
-        let path = safe_join(dir, &file.path)?;
-        if !seen.insert(path.clone()) {
+        let target = safe_join(dir, &file.path)?;
+        if !seen.insert(target.clone()) {
             return Err(ExportError::UnsafePath(format!("duplicate export path: {}", file.path)));
         }
-        targets.push((path, &file.content));
+        writes.push(PlannedWrite { path: &file.path, target, content: &file.content });
     }
-    // The chosen root may itself be an OS alias; only descendants are rejected.
-    // These checks prevent known symlink escapes, not concurrent path replacement.
-    for (path, _) in &targets { reject_links(dir, path)?; }
+    Ok(WritePlan { root: dir.to_path_buf(), writes })
+}
+
+/// Carries out a plan. The chosen root may itself be an OS alias; only
+/// descendants are rejected. These checks prevent known symlink escapes, not
+/// concurrent path replacement.
+fn write_plan(plan: &WritePlan, overwrite: bool) -> Result<(), ExportError> {
+    let root = &plan.root;
+    for write in &plan.writes { reject_links(root, &write.target)?; }
     if !overwrite {
-        let conflicts: Vec<_> = files.iter().zip(&targets)
-            .filter(|(_, (path, _))| path.exists()).map(|(file, _)| file.path.clone()).collect();
+        let conflicts: Vec<String> = plan.writes.iter()
+            .filter(|write| write.target.exists()).map(|write| write.path.to_string()).collect();
         if !conflicts.is_empty() { return Err(ExportError::Conflicts(conflicts)); }
     }
     // Stage every file first. A failed write leaves all original files intact.
     // Persistence is atomic per file; the batch is not a filesystem transaction.
     let mut staged = Vec::new();
-    for (path, content) in &targets {
+    for write in &plan.writes {
+        let path = &write.target;
         let parent = path.parent().ok_or_else(|| ExportError::UnsafePath(path.display().to_string()))?;
         std::fs::create_dir_all(parent).map_err(|e| io_error(parent, e))?;
-        reject_links(dir, path)?;
+        reject_links(root, path)?;
         // `NamedTempFile` defaults to 0600; exported sources should honor the
         // umask the way `std::fs::write` did (typically 0644).
         #[allow(unused_mut)]
@@ -80,12 +115,12 @@ pub fn export_project(
         }
         let mut temp = builder.tempfile_in(parent).map_err(|e| io_error(path, e))?;
         use std::io::Write;
-        temp.write_all(content.as_bytes()).map_err(|e| io_error(path, e))?;
+        temp.write_all(write.content.as_bytes()).map_err(|e| io_error(path, e))?;
         temp.as_file().sync_all().map_err(|e| io_error(path, e))?;
         staged.push((temp, path));
     }
     for (temp, path) in staged {
-        reject_links(dir, path)?;
+        reject_links(root, path)?;
         if overwrite {
             temp.persist(path).map_err(|e| io_error(path, e.error))?;
         } else {
@@ -157,6 +192,15 @@ mod tests {
         ]
     }
 
+    fn file(path: &str) -> GeneratedFile {
+        GeneratedFile {
+            path: path.to_string(),
+            content: "x".to_string(),
+            table: "users".to_string(),
+            kind: FileKind::Model,
+        }
+    }
+
     /// Fresh unique temp dir; caller removes it.
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -165,6 +209,22 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&dir);
         dir
+    }
+
+    #[test]
+    fn plan_resolves_every_target_under_the_root() {
+        let root = temp_dir("plan-targets");
+        let files = files();
+        let plan = plan_export(&root, &files).expect("plan should resolve");
+        let targets: Vec<&Path> = plan.writes.iter().map(|w| w.target.as_path()).collect();
+        assert_eq!(
+            targets,
+            [
+                root.join("internal/model/user.go").as_path(),
+                root.join("internal/repository/user_repo.go").as_path(),
+            ]
+        );
+        assert!(!root.exists(), "planning must not touch the filesystem");
     }
 
     #[test]
@@ -226,13 +286,7 @@ mod tests {
     #[test]
     fn rejects_absolute_paths() {
         let dir = temp_dir("absolute");
-        let bad = vec![GeneratedFile {
-            path: "/etc/passwd".to_string(),
-            content: "x".to_string(),
-            table: "users".to_string(),
-            kind: FileKind::Model,
-        }];
-        let err = export_project(&dir, &bad, false).expect_err("absolute rejected");
+        let err = plan_export(&dir, &[file("/etc/passwd")]).expect_err("absolute rejected");
         assert!(matches!(err, ExportError::UnsafePath(_)), "got {err:?}");
         assert!(!dir.exists(), "nothing written on unsafe path");
     }
@@ -240,15 +294,20 @@ mod tests {
     #[test]
     fn rejects_parent_traversal() {
         let dir = temp_dir("traversal");
-        let bad = vec![GeneratedFile {
-            path: "../escape.go".to_string(),
-            content: "x".to_string(),
-            table: "users".to_string(),
-            kind: FileKind::Model,
-        }];
-        let err = export_project(&dir, &bad, false).expect_err("traversal rejected");
+        let err = plan_export(&dir, &[file("../escape.go")]).expect_err("traversal rejected");
         assert!(matches!(err, ExportError::UnsafePath(_)), "got {err:?}");
         assert!(!dir.exists(), "nothing written on unsafe path");
+    }
+
+    #[test]
+    fn rejects_duplicate_paths() {
+        let dir = temp_dir("duplicate");
+        let err = plan_export(&dir, &[file("internal/model/user.go"), file("internal/model/user.go")])
+            .expect_err("duplicate rejected");
+        match err {
+            ExportError::UnsafePath(message) => assert!(message.contains("duplicate"), "{message}"),
+            other => panic!("expected UnsafePath, got {other:?}"),
+        }
     }
 
     #[test]
@@ -256,8 +315,7 @@ mod tests {
         // A relative root would resolve against the process CWD, so it must be
         // refused before any path is joined or any directory is created.
         let root = "gorm-generate-relative-root-should-not-exist/root";
-        let err = export_project(Path::new(root), &files(), false)
-            .expect_err("relative root rejected");
+        let err = plan_export(Path::new(root), &files()).expect_err("relative root rejected");
         match err {
             ExportError::UnsafePath(path) => {
                 assert_eq!(path, root, "error must name the rejected root");
