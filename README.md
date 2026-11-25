@@ -44,6 +44,8 @@ crates/core/          解析、生成、导出；不依赖 Tauri，可独立测�
   src/export.rs       写盘：路径校验、冲突检测、软链接拒绝
 src-tauri/            Tauri 命令（ping / generate_project / export_project）
 src/                  Vue 界面（App.vue、SqlEditor、CodePreview）
+  composables/        设置持久化、生成、导出、复制的独立状态模块
+  lib/                IPC 线格式与设置加载的纯函数
 ```
 
 ## 环境要求
@@ -73,7 +75,7 @@ npm run tauri dev
 | `cargo test -p gorm-generate` | Tauri 命令单测：导出根确认、导出失败线格式 |
 | `cargo clippy --workspace --all-targets -- -D warnings` | 全 workspace lint |
 | `npm run typecheck` | 前端类型检查 |
-| `npm test` | 前端单测：IPC 错误收窄、导出失败文案、设置加载 |
+| `npm test` | 前端单测：IPC 错误收窄、设置加载、四个 composable（设置持久化、生成、导出、复制） |
 
 `compile` 第一次运行会在临时项目里执行 `go mod tidy` 拉取 gorm 与 go-redis，因此需要能访问 module proxy。
 

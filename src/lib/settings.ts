@@ -1,6 +1,6 @@
 // Settings persistence: the shape written to localStorage, and the tolerant
-// loader that guards against stale or corrupt values. Saving stays with the
-// component, which owns the reactive refs.
+// loader that guards against stale or corrupt values. Saving lives in
+// `useSettings`, which owns the reactive refs.
 
 export const STORAGE_KEY = "gorm-generate:state"
 

@@ -1,191 +1,55 @@
 <script setup lang="ts">
-import { invoke } from "@tauri-apps/api/core"
-import { confirm } from "@tauri-apps/plugin-dialog"
-import { computed, ref, watch, onBeforeUnmount } from "vue"
-
 import CodePreview from "@/components/CodePreview.vue"
 import SqlEditor from "@/components/SqlEditor.vue"
 import { Button } from "@/components/ui/button"
-import {
-  exportFailureText,
-  generateErrorDetail,
-  generateErrorTitle,
-  toExportFailure,
-  toGenerateError,
-  type GenerateError,
-  type GeneratedProject,
-} from "@/lib/ipc"
-import { loadState, STORAGE_KEY } from "@/lib/settings"
+import { useCopy } from "@/composables/useCopy"
+import { useExport } from "@/composables/useExport"
+import { useProject } from "@/composables/useProject"
+import { useSettings } from "@/composables/useSettings"
 
-const initial = loadState(localStorage.getItem(STORAGE_KEY))
-const ddl = ref(initial.ddl)
-const modulePath = ref(initial.modulePath)
-const dialect = ref<"mysql" | "postgres">(initial.dialect)
-const tinyintAsBool = ref(initial.tinyintAsBool)
-const cacheEnabled = ref(initial.cacheEnabled)
-const cacheTtlSeconds = ref<number | string>(initial.cacheTtlSeconds)
+const settings = useSettings()
+// Generate is blocked while an export is writing. The flag lives in the export
+// composable and is read lazily, so the two can be assembled in either order.
+const projectState = useProject(settings, () => exporter.exporting.value)
+const exporter = useExport(projectState)
+const copier = useCopy()
 
-const project = ref<GeneratedProject | null>(null)
-const selectedPath = ref("")
-const error = ref<GenerateError | null>(null)
-const pending = ref(false)
-const copied = ref("")
-const exporting = ref(false)
-const exportMsg = ref("")
-// Toast dismissal: hide the parse-error toast without losing the inline error.
-const toastDismissed = ref(false)
-// Selected tables; set to all tables on each generate.
-const selectedTables = ref<Set<string>>(new Set())
+const {
+  ddl,
+  modulePath,
+  dialect,
+  tinyintAsBool,
+  cacheEnabled,
+  cacheTtlSeconds,
+  persistenceError,
+} = settings
 
-const persistenceError = ref("")
-const copyError = ref("")
-let persistTimer: ReturnType<typeof setTimeout> | undefined
-function saveState() {
-  clearTimeout(persistTimer)
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      ddl: ddl.value, modulePath: modulePath.value, dialect: dialect.value,
-      tinyintAsBool: tinyintAsBool.value, cacheEnabled: cacheEnabled.value,
-      cacheTtlSeconds: cacheTtlSeconds.value,
-    }))
-    persistenceError.value = ""
-  } catch {
-    persistenceError.value = "Settings could not be saved. Keep a copy of your DDL before closing."
-  }
-}
-function flushState() { saveState() }
-window.addEventListener("pagehide", flushState)
-onBeforeUnmount(() => {
-  saveState()
-  window.removeEventListener("pagehide", flushState)
-})
-// Debounce synchronous storage writes during typing.
-watch(
-  [ddl, modulePath, dialect, tinyintAsBool, cacheEnabled, cacheTtlSeconds],
-  () => {
-    clearTimeout(persistTimer)
-    persistTimer = setTimeout(saveState, 300)
-  },
-  { deep: true },
-)
+const {
+  project,
+  pending,
+  error,
+  selectedTables,
+  selectedPath,
+  visibleFiles,
+  selectedFile,
+  allContent,
+  dependencies,
+  showErrorToast,
+  errorTitle,
+  errorDetail,
+  toggleTable,
+  dismissToast,
+} = projectState
 
-const visibleFiles = computed(() =>
-  project.value?.files.filter((f) => selectedTables.value.has(f.table)) ?? [],
-)
+const { exporting, exportMsg, exportToDir } = exporter
+const { copied, copyError, copy } = copier
 
-const selectedFile = computed(
-  () => visibleFiles.value.find((f) => f.path === selectedPath.value) ?? null,
-)
-
-function toggleTable(table: string) {
-  const next = new Set(selectedTables.value)
-  if (next.has(table)) next.delete(table)
-  else next.add(table)
-  selectedTables.value = next
-  // Keep preview pointed at a visible file.
-  if (!visibleFiles.value.some((f) => f.path === selectedPath.value)) {
-    selectedPath.value = visibleFiles.value[0]?.path ?? ""
-  }
-}
-
-async function generate() {
-  // An export writes files for the current project; regenerating underneath it
-  // would make its late status message describe a project that no longer shows.
-  if (pending.value || exporting.value) return
-  pending.value = true
-  project.value = null
-  selectedPath.value = ""
-  error.value = null
-  copied.value = ""
-  exportMsg.value = ""
-  copyError.value = ""
-  toastDismissed.value = false
-  try {
-    project.value = await invoke<GeneratedProject>("generate_project", {
-      request: {
-        ddl: ddl.value,
-        dialect: dialect.value,
-        modulePath: modulePath.value,
-        cacheEnabled: cacheEnabled.value,
-        cacheTtlSeconds: cacheEnabled.value ? cacheTtlSeconds.value : 300,
-        tinyintAsBool: tinyintAsBool.value,
-      },
-    })
-    // Fresh generation: every table selected by default.
-    selectedTables.value = new Set(project.value.tables)
-    selectedPath.value = project.value.files[0]?.path ?? ""
-  } catch (cause) {
-    error.value = toGenerateError(cause)
-  } finally {
-    pending.value = false
-  }
-}
-
-async function copy(text: string, label: string) {
-  copyError.value = ""
-  try {
-    if (!navigator.clipboard?.writeText) throw new Error("Clipboard is unavailable")
-    await navigator.clipboard.writeText(text)
-    copied.value = label
-    setTimeout(() => {
-      if (copied.value === label) copied.value = ""
-    }, 1500)
-  } catch (cause) {
-    copyError.value = `Copy failed: ${String(cause)}`
-  }
-}
-
-async function exportToDir() {
-  if (!project.value || exporting.value || !visibleFiles.value.length) return
-  exporting.value = true
-  exportMsg.value = ""
-  const files = visibleFiles.value
-  try {
-    // The directory comes from Rust's native picker; the renderer never picks
-    // the write target itself.
-    const dir = await invoke<string | null>("pick_export_dir")
-    if (!dir) return
-    try {
-      await invoke<void>("export_project", { files, overwrite: false })
-    } catch (cause) {
-      const failure = toExportFailure(cause)
-      // Conflicts are the one failure the user can decide to override.
-      if (failure.kind !== "conflicts") throw failure
-      const proceed = await confirm(
-        `${failure.paths.length} file(s) already exist and will be overwritten:\n\n` +
-          failure.paths.join("\n"),
-      )
-      if (!proceed) {
-        exportMsg.value = "Export cancelled"
-        return
-      }
-      await invoke<void>("export_project", { files, overwrite: true })
-    }
-    exportMsg.value = `Exported ${files.length} file(s) to ${dir}`
-  } catch (cause) {
-    exportMsg.value = `Export failed: ${exportFailureText(toExportFailure(cause))}`
-  } finally {
-    exporting.value = false
-  }
-}
-
-const allContent = computed(() =>
-  visibleFiles.value.map((f) => `// ==== ${f.path} ====\n${f.content}`).join("\n"),
-)
-
-// Dependency hints come from the core, which derives them from the files it
-// actually emitted; the UI no longer re-derives them from the switches.
-const dependencies = computed(() => project.value?.dependencies ?? [])
-
-// Parse error toast: shown right after a failed generate, dismissible.
-const showErrorToast = computed(() => error.value !== null && !toastDismissed.value)
-
-const errorTitle = computed(() => generateErrorTitle(error.value))
-
-const errorDetail = computed(() => generateErrorDetail(error.value))
-
-function dismissToast() {
-  toastDismissed.value = true
+// A new project makes a previous export's or copy's status stale.
+function generate() {
+  if (projectState.pending.value || exporter.exporting.value) return
+  exporter.reset()
+  copier.reset()
+  void projectState.generate()
 }
 </script>
 
