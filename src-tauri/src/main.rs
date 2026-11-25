@@ -8,12 +8,6 @@ use gorm_generate_core::{GenerateError, GenerateRequest, GeneratedFile, Generate
 use serde::Serialize;
 use tauri_plugin_dialog::DialogExt;
 
-/// IPC layer only forwards: parsing and generation live in `gorm-generate-core`.
-#[tauri::command]
-fn ping() -> String {
-    gorm_generate_core::ping()
-}
-
 /// Thin wrapper over the core `generate` seam. The request and the tagged
 /// error are core types; the core owns their wire format.
 #[tauri::command(async)]
@@ -113,7 +107,6 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .manage(ExportRoot::default())
         .invoke_handler(tauri::generate_handler![
-            ping,
             generate_project,
             export_project,
             pick_export_dir

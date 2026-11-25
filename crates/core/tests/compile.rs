@@ -10,8 +10,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use gorm_generate_core::generate::{generate, Dialect};
-use gorm_generate_core::{export_project, GenerateRequest};
+use gorm_generate_core::{export_project, generate, Dialect, GenerateRequest};
 
 /// One matrix cell: a fixture, its dialect, and the cache switch.
 struct Case {

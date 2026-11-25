@@ -3,8 +3,7 @@
 //! so removing the payload mirrors cannot silently change the contract.
 #![cfg(feature = "serde")]
 
-use gorm_generate_core::generate::Dialect;
-use gorm_generate_core::{generate, GenerateRequest, GeneratedFile};
+use gorm_generate_core::{generate, Dialect, GeneratedFile, GenerateRequest};
 
 fn request(ddl: &str) -> GenerateRequest {
     GenerateRequest {

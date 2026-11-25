@@ -1,5 +1,4 @@
-use gorm_generate_core::{generate, export_project, FileKind, GenerateError, GenerateRequest, GeneratedFile};
-use gorm_generate_core::generate::Dialect;
+use gorm_generate_core::{generate, export_project, Dialect, FileKind, GenerateError, GenerateRequest, GeneratedFile};
 
 fn request(ddl: &str, dialect: Dialect) -> GenerateRequest {
     GenerateRequest { ddl: ddl.into(), dialect, module_path: "example.com/app".into(), cache_enabled: true, cache_ttl_seconds: 300, tinyint_as_bool: true }
