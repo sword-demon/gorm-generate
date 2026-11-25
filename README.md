@@ -77,7 +77,17 @@ CI 见 [.github/workflows/ci.yml](.github/workflows/ci.yml)：push 到 `main` �
 
 ## 打包
 
-`src-tauri/tauri.conf.json` 的 `bundle.active` 已开启，但 `bundle.icon` 尚未配置，`tauri build` 也还没有验证过。相关待办见 ticket 14。
+```bash
+npm run tauri build                    # .app + .dmg
+npm run tauri build -- --bundles app   # 只出 .app
+```
+
+产物默认在 `target/release/bundle/`（若设置了 `CARGO_TARGET_DIR`，则在那个目录下）。
+
+- macOS aarch64 已验证:aarch64 `.app` 约 17 MiB,`.dmg` 约 6 MiB,图标取自 `src-tauri/icons/`。
+- 需要换图标时:`npx tauri icon src-tauri/icons/icon.png`,再更新 `bundle.icon`。
+- 产物**未签名、未公证**:只带 linker 的 adhoc 签名,分发给他人时 Gatekeeper 会拦截。
+- 沙箱环境里 `.dmg` 打包会因 `hdiutil` 无法访问磁盘设备而失败,需在沙箱外执行。
 
 ## 文档
 

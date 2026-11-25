@@ -6,14 +6,14 @@
 
 **Blocked by:** 07
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Category:** enhancement
 
-- [ ] 用 `src-tauri/icons/icon.png` 生成 `.icns` / `.ico` / 各尺寸 PNG，并设置 `bundle.icon`
-- [ ] `npm run tauri build` 成功产出 `.app`（及配置允许的 `.dmg`）
-- [ ] 在本 ticket 记录命令、产物路径、Tauri/Go/Node 版本
-- [ ] 若签名或公证不可用，明确记录为已知限制，不在本 ticket 解决
+- [x] 用 `src-tauri/icons/icon.png` 生成 `.icns` / `.ico` / 各尺寸 PNG，并设置 `bundle.icon`
+- [x] `npm run tauri build` 成功产出 `.app` 与 `.dmg`
+- [x] 在本 ticket 记录命令、产物路径、Tauri/Go/Node 版本
+- [x] 未签名/未公证已记录为已知限制，不在本 ticket 解决
 
 ## Comments
 
@@ -23,3 +23,13 @@
 - 生成命令预期为 `npx tauri icon src-tauri/icons/icon.png`，随后手写 `bundle.icon` 列表。
 - 沙箱内打包可能因签名、证书或 target 目录权限失败；必要时在沙箱外执行，并把失败原文贴回来。
 - review C4 提到的 `bundle.active: false` 已过时，实际配置已是 `true`。
+
+2026-11-25: Implemented.
+
+- `npx tauri icon src-tauri/icons/icon.png` 生成图标集；删掉桌面端不用的移动端与 Windows Store 资源，只保留 32x32、128x128、128x128@2x、icon.icns、icon.ico（加上被重写的 icon.png）。
+- `src-tauri/tauri.conf.json` 的 `bundle.icon` 指向上述 5 个文件。
+- `npm run tauri build -- --bundles app`：冷编译 1m08s，产出 `gorm-generate.app`（17.34 MiB，arm64）。`Contents/Resources/icon.icns` 存在，`CFBundleIconFile = icon.icns`，`CFBundleIdentifier = dev.gormgenerate.app`。
+- `npm run tauri build -- --bundles dmg`：沙箱内失败（`hdiutil: create failed - 设备未配置`），在沙箱外重跑成功，产出 `gorm-generate_0.1.0_aarch64.dmg`（6.06 MiB）。这是沙箱限制，不是项目配置问题。
+- 版本：Tauri CLI 2.12.6、Rust 1.90.0、Node 22.23.4、Go 1.27.3。
+- 签名：只有 linker 的 adhoc 签名，没有 Developer ID 与公证；分发给他人时 Gatekeeper 会拦截。本 ticket 不做签名。
+- 没有启动 `.app` 做界面冒烟（GUI 启动在当前环境不可用）。
