@@ -70,3 +70,12 @@
 - **现象**：第一次真实跑 `release.yml` 两格都挂在 `Build and publish`，报错是 `failed to bundle project: can't open main binary target/release/gorm-generate: No such file or directory`；日志里 npm 回显的是 `> tauri build -- --target x86_64-apple-darwin`。
 - **根因**：`tauri-action` 执行 `<tauriScript> <command> -- <args>`，自己插了一个 `--`；我在 `tauriScript` 里又写了 `npm run tauri --`，两个分隔符叠在一起。npm 只吃掉第一个，第二个作为字面量参数进了脚本 —— tauri CLI 的 `--` 之后是「传给 runner 的参数」，于是 `--target` 被当成 cargo 的参数，cargo 编到了 `target/x86_64-apple-darwin/`，而打包器仍按宿主 target 目录找二进制。
 - **规则**：参数分隔符只能有一个，且要确认**是谁加的**。写 `npm run <script>` 形式的 action 时，不要自己再加 `--`：action 的分隔符就是给 npm 用的，npm 会把它吃掉，CLI 最终收到的是干净的 `build --target <arch>`。这类拼接**在推 tag 之前先用本地同一条命令跑一遍**（本次 `npm run tauri build -- --target …` 本地一跑就能看出来），别用 20 分钟的 CI 循环代替一次本地验证。
+
+
+## 2026-11-26 改 workflow：删步骤时把下一步的缩进带坏了
+
+### 9. 删除 workflow 步骤时，缩进多了一格
+
+- **现象**：给 release workflow 去掉 Apple 签名步骤后，GitHub 上连续两次出现 `failure` 且 `This run likely failed because of a workflow file issue`，0 秒结束、一个 job 都没有；CI 本身是绿的。
+- **根因**：删掉整段步骤时，把后面 `- name: Build and publish` 那一行多缩进了两格（12 空格而不是 6），于是它在 YAML 里不再是列表项，而是落进了上一个 `run: |` 的脚本块里当普通文本。YAML 本身仍然合法（所以本地解析器、`ruby -e 'YAML.load_file'` 全过），但 workflow 的 schema 失效：`Build and publish` 这一步不再存在，发布流程实际已经不产出了。
+- **规则**：改 workflow 后不能只看 YAML 能不能解析 —— 要看**结构对不对**。最省事的检查是把改动后的文件与上一次跑通过的文件 diff，确认差异只有预期的那些行；再补一条结构断言（每个 step 是 mapping，且恰好有 `uses` 或 `run` 之一）。这次 `git diff 0497858 -- .github/workflows/release.yml` 一眼就能看出 `Build and publish` 的缩进变了。
