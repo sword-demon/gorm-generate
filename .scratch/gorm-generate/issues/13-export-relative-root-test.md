@@ -6,13 +6,13 @@
 
 **Blocked by:** 07
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Category:** enhancement
 
-- [ ] 新增单测：`export_project` 收到相对路径根目录时返回 `ExportError::UnsafePath`
-- [ ] 断言错误里带上该路径（与 A18 的错误信息可定位性一致）
-- [ ] `cargo test -p gorm-generate-core` 全绿
+- [x] 新增单测：`export_project` 收到相对路径根目录时返回 `ExportError::UnsafePath`
+- [x] 断言错误里带上该路径（与 A18 的错误信息可定位性一致）
+- [x] `--lib` 与 `--test review_regressions` 全绿（`--test compile` 需联网，见 ticket 11）
 
 ## Comments
 
@@ -20,3 +20,11 @@
 
 - 命令：`RUSTC_WRAPPER= CARGO_TARGET_DIR="$TMPDIR/cargo-target-review" cargo test -p gorm-generate-core --lib`。
 - 该用例属于 `crates/core/tests/review_regressions.rs` 已覆盖主题（重复路径、软链接、staging 失败）之外的剩余项；按现有组织方式，放 `export.rs` 的测试模块或 `review_regressions.rs` 均可，但不要与 ticket 12 的信任校验混在一起。
+
+2026-11-25: Implemented.
+
+- 新增 `export::tests::rejects_relative_root`（`crates/core/src/export.rs`），与既有的绝对路径/`..` 用例同处一个测试模块。
+- 断言 `ExportError::UnsafePath`，且错误字符串等于传入的相对根目录（避免"只报 unsafe 却定位不到来源"）。
+- 同时断言进程 CWD 下没有生成该目录：相对根目录若未被拦截，会按 CWD 解析并写盘。
+- 验证：`cargo test -p gorm-generate-core --lib` 41 passed（此前 40，新增 1）；`--test review_regressions` 12 passed。`--test compile` 未跑（联网环境要求见 ticket 11）。
+- 命令：`RUSTC_WRAPPER= CARGO_TARGET_DIR="$TMPDIR/cargo-target-review" cargo test -p gorm-generate-core --lib`。

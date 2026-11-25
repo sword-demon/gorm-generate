@@ -244,4 +244,23 @@ mod tests {
         assert!(matches!(err, ExportError::UnsafePath(_)), "got {err:?}");
         assert!(!dir.exists(), "nothing written on unsafe path");
     }
+
+    #[test]
+    fn rejects_relative_root() {
+        // A relative root would resolve against the process CWD, so it must be
+        // refused before any path is joined or any directory is created.
+        let root = "gorm-generate-relative-root-should-not-exist/root";
+        let err = export_project(Path::new(root), &files(), false)
+            .expect_err("relative root rejected");
+        match err {
+            ExportError::UnsafePath(path) => {
+                assert_eq!(path, root, "error must name the rejected root");
+            }
+            other => panic!("expected UnsafePath, got {other:?}"),
+        }
+        assert!(
+            !Path::new("gorm-generate-relative-root-should-not-exist").exists(),
+            "nothing written relative to CWD"
+        );
+    }
 }
