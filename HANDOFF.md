@@ -7,9 +7,9 @@
 - 路径:`/Volumes/MOVESPEED/study/gorm-generate`;纯本地 Tauri 2 + Vue 3 + Rust 核心的离线 DDL → Go 分层代码生成器。
 - 当前分支 `main`;记录时 HEAD 是承载本文件修订的那次文档提交,位于 `519cd53`(App.vue 挂载测试)之后一格。
 - 远端:`origin git@github.com:sword-demon/gorm-generate.git`,**public**;About 为中文描述,topics 已配置。
-- 唯一的 release 曾经只有 `v0.1.0`(注释 tag 打在 `21155dd`,附 `gorm-generate_0.1.0_aarch64.dmg` 与 `.app.zip`,未签名未公证)。**2026-11-26 新增 `v0.1.1`**:由 `.github/workflows/release.yml` 自动发布,资产为 `gorm-generate_0.1.1_aarch64.dmg` / `gorm-generate_0.1.1_x64.dmg`(以及各自的 `.app.tar.gz`),同样未签名未公证。
+- 唯一的 release 曾经只有 `v0.1.0`(注释 tag 打在 `21155dd`,附 `gorm-generate_0.1.0_aarch64.dmg` 与 `.app.zip`,未签名未公证)。**2026-11-26 新增 `v0.1.1`**:由 `.github/workflows/release.yml` 自动发布,资产为 `gorm-generate_0.1.1_aarch64.dmg` / `gorm-generate_0.1.1_x64.dmg`(以及各自的 `.app.tar.gz`),同样未签名未公证。**`v0.1.2` 正在切**:版本号已 bump 到 `0.1.2`(`Cargo.toml` / `package.json` / 两个 lock),tag 由 `.github/workflows/release.yml` 自动发布。
 - `.cargo/config.toml` 是本机的 rsproxy 稀疏镜像覆盖,被 `.git/info/exclude` 排除,不属于仓库内容;不要提交它。
-- 本地有 35 个以上的分支,全部已合入 `main`(`git branch --merged main` 可一次列出),可安全删除;尚未清理。
+- 本地只剩 `main` 分支(37 个已合并的旧分支与对应远端分支已删除);远端也只有 `main`。
 
 ## 2. `21155dd` 之后做了什么(2026-11-25 → 11-26)
 
@@ -29,6 +29,7 @@
 - 新增 `.github/workflows/release.yml`:tag 触发 → `macos-15`(aarch64)与 `macos-15-intel`(x86_64)各构建一次 → `tauri-apps/tauri-action@v1` 上传 GitHub Release;tag 必须与 `Cargo.toml` 版本一致(构建前校验);签名/公证的 secrets 可选,不配就是未签名产物。
 - **发布流水线已在真实 CI 上跑通一次**:run `45657109208`(2026-11-26),两格都绿,`v0.1.1` 发布成功。第一次跑(`45652646653`)挂在 `tauri-action` 插的 `--` 与我自带的 `--` 叠加,已修(`tauriScript: npm run tauri`,不带 `--`),教训记在 `tasks/lessons.md` 第 8 条。
 - **界面改动(2026-11-26)**:标题栏只留标题、当前配置摘要、生成按钮与最右端的配置按钮(方言/module path/缓存/TTL/`tinyint(1)` 移进表单);SQL 与结果之间加可拖动分隔条(方向键也能调,宽度记进 localStorage);底部依赖可一键复制 `go get` 命令。前端 83 个测试全绿,浏览器 dev server 里验过头部单行、配置表单(勾 Redis 后出现 TTL)、拖动后宽度与持久化。
+- **全仓简化(PR #1 / #2,2026-11-26)**:删掉渲染、解析与前端监听里的重复工作(层契约每张表只算一次、PK import 片段共用一个 helper、解析错误片段改为惰性构造、`ident_value` 只留一份、主键 membership 用集合、窗口监听清理复用同一组函数引用),生成的 Go 产物逐字节不变(黄金 fixture 全绿);顺带修掉两处「测试声称覆盖但其实没断言」的用例。经验记在 `docs/solutions/design-patterns/shared-implementation-versus-shared-computation.md`,术语在 `CONCEPTS.md`。
 
 未验证:
 
@@ -72,5 +73,4 @@
 1. 手动冒烟 UI,重点验证导出链路(选择器权限已收窄到 Rust,前端不再持有 `dialog:allow-open`)。
 2. 对外分发:发布流程已就绪(`.github/workflows/release.yml`),维持未签名/未公证策略,用户按 README「首次打开未签名 App」放行。
 3. 可选:补一条 `pull_request` 触发的真实验证(建临时 PR);给前端加最小 e2e。
-4. 可选:删除 37 个已合并的本地分支,保持 `git branch` 干净。
-5. 可选:把 `SqlEditor` / `CodePreview` 里重复的高亮竞态守卫抽成一个 composable(候选 15),把 `render.rs` 按层拆文件(候选 16)。
+4. 可选:把 `SqlEditor` / `CodePreview` 里重复的高亮竞态守卫抽成一个 composable(候选 15),把 `render.rs` 按层拆文件(候选 16)。
