@@ -35,7 +35,7 @@
 - **GUI 手动冒烟已完成(2026-11-26)**:用 Screen Recording / 辅助功能权限驱动本地构建的 `.app`。已验证:窗口渲染、Generate 真的生成了 4 个文件(model / repository / service / cache)、文件树、Go 高亮预览、配置表单(修改选项生效)、SQL 与结果分隔条拖动、单条依赖复制、Copy all、Export to directory,以及底部依赖行(`gorm.io/gorm`、`github.com/redis/go-redis/v9`)。用户确认上述真实交互全部成功。
 - CI 的 `pull_request` 触发没有真实 PR 走过。
 - "故意改坏模板验证 CI 变红"没有做(ticket 15 已注明)。
-- 产物未签名、未公证(`v0.1.1` 的构建日志里 `signed=no notarized=no`)。
+- 产物未签名、未公证(`v0.1.1` 的构建日志里 `signed=no notarized=no`);这是项目的正式分发约束,不再把 Apple 签名/公证作为待办。README「发布」已写明架构选择、安装到 Applications、Control-点击「打开」及「隐私与安全性 → 仍要打开」的首次放行步骤。
 
 ## 4. Ticket 与已知缺口
 
@@ -70,7 +70,7 @@
 ## 8. 建议下一步
 
 1. 手动冒烟 UI,重点验证导出链路(选择器权限已收窄到 Rust,前端不再持有 `dialog:allow-open`)。
-2. 若要对外分发:发布流程已就绪(`.github/workflows/release.yml`),剩下的是配 Developer ID 签名与公证的 secrets(见 README「发布」),然后打第一个 tag 跑通一次。
+2. 对外分发:发布流程已就绪(`.github/workflows/release.yml`),维持未签名/未公证策略,用户按 README「首次打开未签名 App」放行。
 3. 可选:补一条 `pull_request` 触发的真实验证(建临时 PR);给前端加最小 e2e。
 4. 可选:删除 37 个已合并的本地分支,保持 `git branch` 干净。
 5. 可选:把 `SqlEditor` / `CodePreview` 里重复的高亮竞态守卫抽成一个 composable(候选 15),把 `render.rs` 按层拆文件(候选 16)。

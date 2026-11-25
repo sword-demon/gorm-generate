@@ -83,43 +83,7 @@ jobs:
             exit 1
           fi
 
-      # Signing is optional: without APPLE_CERTIFICATE the build stays
-      # unsigned (adhoc signature only) and the release says so.
-      - name: Configure Apple signing (optional)
-        env:
-          CERT: ${{ secrets.APPLE_CERTIFICATE }}
-          CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID_SECRET: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD_SECRET: ${{ secrets.APPLE_PASSWORD }}
-          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          if [ -n "$CERT" ]; then
-            {
-              echo 'APPLE_CERTIFICATE<<EOF'
-              echo "$CERT"
-              echo 'EOF'
-              echo "APPLE_CERTIFICATE_PASSWORD=$CERT_PASSWORD"
-              echo "APPLE_SIGNING_IDENTITY=${IDENTITY:-Developer ID Application}"
-            } >> "$GITHUB_ENV"
-            echo "signed=yes" >> "$GITHUB_ENV"
-          else
-            echo "signed=no" >> "$GITHUB_ENV"
-          fi
-          # Notarization needs an app-specific password (or an API key) plus
-          # the team id. Without them the app is signed but not notarized.
-          if [ -n "$APPLE_ID_SECRET" ] && [ -n "$APPLE_PASSWORD_SECRET" ] && [ -n "$TEAM_ID" ]; then
-            {
-              echo "APPLE_ID=$APPLE_ID_SECRET"
-              echo "APPLE_PASSWORD=$APPLE_PASSWORD_SECRET"
-              echo "APPLE_TEAM_ID=$TEAM_ID"
-            } >> "$GITHUB_ENV"
-            echo "notarized=yes" >> "$GITHUB_ENV"
-          else
-            echo "notarized=no" >> "$GITHUB_ENV"
-          fi
-
-      - name: Build and publish
+            - name: Build and publish
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -148,9 +112,7 @@ jobs:
           tauriScript: npm run tauri
           args: --target ${{ matrix.target }}
 
-      - name: Report the signing state
+      - name: Report unsigned distribution
         run: |
-          echo "signed=$signed notarized=$notarized"
-          if [ "$signed" != "yes" ]; then
-            echo "::warning::no Apple certificate configured — the release is unsigned"
-          fi
+          echo "signed=no notarized=no"
+          echo "::warning::Apple Developer ID signing and notarization are intentionally not configured"

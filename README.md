@@ -101,12 +101,22 @@ npm run tauri build -- --bundles app   # 只出 .app
 
 - macOS aarch64 已验证:aarch64 `.app` 约 17 MiB,`.dmg` 约 6 MiB,图标取自 `src-tauri/icons/`。
 - 需要换图标时:`npx tauri icon src-tauri/icons/icon.png`,再更新 `bundle.icon`。
-- 产物**未签名、未公证**:只带 linker 的 adhoc 签名,分发给他人时 Gatekeeper 会拦截;签名的配置见下面的「发布」。
+- 产物**未签名、未公证**:只带 linker 的 adhoc 签名。项目不提供 Apple Developer ID 签名,用户首次打开时需要按下面的「首次打开未签名 App」放行。
 - 沙箱环境里 `.dmg` 打包会因 `hdiutil` 无法访问磁盘设备而失败,需在沙箱外执行。
 
 ## 发布
 
 [.github/workflows/release.yml](.github/workflows/release.yml) 把一个 tag 变成 GitHub Release。
+
+本项目的 Release 默认是未签名、未公证的 macOS 产物,不会提供 Apple Developer ID 签名。用户可以正常使用,但首次打开需要手动允许 macOS 放行。
+
+**首次打开未签名 App**
+
+1. 从 Release 下载与你的 Mac 架构对应的 `.dmg`：Apple Silicon 选 `aarch64`,Intel 选 `x64`。
+2. 打开 `.dmg`,将 `gorm-generate` 拖到「应用程序」,然后先退出磁盘映像。
+3. 在 Finder 的「应用程序」中找到 `gorm-generate`,按住 Control 点击,选择「打开」,再在确认对话框中点击「打开」。不要直接双击反复尝试。
+4. 如果仍被拦截:打开「系统设置 → 隐私与安全性」,向下找到被阻止的 `gorm-generate`,点击「仍要打开」,然后再次启动。
+5. 仅从本项目 GitHub Release 下载产物;不要对未知来源的 `.app` 使用上述放行步骤。
 
 **发一个版本**
 
@@ -119,18 +129,7 @@ tag 必须与 `Cargo.toml` 的版本一致,否则 workflow 在构建前就会失
 
 **签名与公证**
 
-不配 secret 就是未签名产物(adhoc 签名,Gatekeeper 会拦)。要在 Releases 上放能直接打开的产物,需要在仓库的 Actions secrets 里配置:
-
-| Secret | 内容 |
-| --- | --- |
-| `APPLE_CERTIFICATE` | Developer ID Application 证书（`.p12`）的 base64 内容:`base64 -i cert.p12 \| tr -d '\n'` |
-| `APPLE_CERTIFICATE_PASSWORD` | 导出该 `.p12` 时设置的密码 |
-| `APPLE_SIGNING_IDENTITY` | 签名身份,默认 `Developer ID Application` |
-| `APPLE_ID` | Apple ID(公证用) |
-| `APPLE_PASSWORD` | 该 Apple ID 的 app 专用密码(公证用) |
-| `APPLE_TEAM_ID` | 开发者团队 id(公证用) |
-
-没有 `APPLE_CERTIFICATE` 时 workflow 照常发布,只是产物未签名;只配签名不配公证时,产物已签名但未公证。workflow 末尾会打印本次是否签名、公证。
+本项目不配置 Apple Developer ID 证书,Release 保持未签名、未公证。workflow 仍会正常构建并发布两个架构的 `.dmg`;用户按上面的「首次打开未签名 App」操作即可。
 
 ## 文档
 
