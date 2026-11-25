@@ -32,6 +32,10 @@ _Avoid_: DAO、Mapper、Store
 业务层接口及其实现，默认与仓储同签名的薄透传。
 _Avoid_: Logic、UseCase、Biz
 
+**层契约 (Layer Contract)**:
+仓储、服务与缓存装饰器共用的五个方法（`Create` / `GetByID` / `List` / `Update` / `Delete`）的签名与主键参数表达式。由一个 crate 私有的契约模块从已解析表一次算出；三层渲染器只负责各自的函数体与 import 块。
+_Avoid_: 接口模板、方法表
+
 **缓存装饰器 (Cache Decorator)**:
 实现同一仓储接口、在真实仓储外增加缓存读写与失效逻辑的实现。
 _Avoid_: 缓存层、Cache Repo

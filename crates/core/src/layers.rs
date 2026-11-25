@@ -3,13 +3,16 @@
 //! format text.
 
 use crate::generate::{Dialect, GeneratedFile, GenerateRequest};
-use crate::naming::field_name;
 use crate::resolve::Table;
+
+mod contract;
+
+use contract::{Contract, Method};
 
 /// Renders `internal/repository/<table>_repo.go`: interface, GORM impl, and
 /// constructor in one file. Only called for tables with a primary key.
 pub(crate) fn render_repository(table: &Table, request: &GenerateRequest) -> GeneratedFile {
-    let get_params = params_list(table, "ctx context.Context, ");
+    let contract = Contract::new(table);
     let where_chain = where_chain(table, request.dialect);
     // Only the PK parameter types appear in this file, so their import needs
     // are narrower than the model's field types.
@@ -32,11 +35,7 @@ import (
 
 // {repo_iface} is the persistence boundary for the {table} table.
 type {repo_iface} interface {{
-	Create(ctx context.Context, m *{s}) error
-	GetByID({get_params}) (*{s}, error)
-	List(ctx context.Context, page int, pageSize int) ([]*{s}, int64, error)
-	Update(ctx context.Context, m *{s}) error
-	Delete({get_params}) error
+{interface}
 }}
 
 // {impl_type} implements {repo_iface} with GORM.
@@ -49,11 +48,11 @@ func New{fn}Repository(db *gorm.DB) {repo_iface} {{
 	return &{impl_type}{{db: db}}
 }}
 
-func (r *{impl_type}) Create(ctx context.Context, m *{s}) error {{
+func (r *{impl_type}) {create} {{
 	return r.db.WithContext(ctx).Create(m).Error
 }}
 
-func (r *{impl_type}) GetByID({get_params}) (*{s}, error) {{
+func (r *{impl_type}) {get_by_id} {{
 	var m {s}
 	err := r.db.WithContext(ctx).Where("{where_chain}", {where_args}).First(&m).Error
 	if err != nil {{
@@ -62,7 +61,7 @@ func (r *{impl_type}) GetByID({get_params}) (*{s}, error) {{
 	return &m, nil
 }}
 
-func (r *{impl_type}) List(ctx context.Context, page int, pageSize int) ([]*{s}, int64, error) {{
+func (r *{impl_type}) {list} {{
 	if page < 1 || pageSize < 1 || page - 1 > int(^uint(0) >> 1) / pageSize {{
 		return nil, 0, fmt.Errorf("page and pageSize must be positive and offset must fit int")
 	}}
@@ -76,11 +75,11 @@ func (r *{impl_type}) List(ctx context.Context, page int, pageSize int) ([]*{s},
 	return items, total, err
 }}
 
-func (r *{impl_type}) Update(ctx context.Context, m *{s}) error {{
+func (r *{impl_type}) {update} {{
 	return r.db.WithContext(ctx).Save(m).Error
 }}
 
-func (r *{impl_type}) Delete({get_params}) error {{
+func (r *{impl_type}) {delete} {{
 	return r.db.WithContext(ctx).Where("{where_chain}", {where_args}).Delete(&{s}{{}}).Error
 }}
 "#,
@@ -88,16 +87,22 @@ func (r *{impl_type}) Delete({get_params}) error {{
         json_import = json_import,
         module = request.module_path,
         table = table.sql_name,
-        s = format!("model.{}", table.struct_name),
-        get_params = get_params,
+        s = contract.model_type(),
+        interface = contract.interface(),
+        create = contract.signature(Method::Create),
+        get_by_id = contract.signature(Method::GetByID),
+        list = contract.signature(Method::List),
+        update = contract.signature(Method::Update),
+        delete = contract.signature(Method::Delete),
         where_chain = where_chain,
-        where_args = args_list(table),
-        order = table
-            .pk()
-            .map(|p| quote_sql(&p.sql_name, request.dialect))
-            .collect::<Vec<_>>()
-            .join(",")
-            .replace('"', "\\\""),
+        where_args = contract.get_args(),
+        order = go_string_literal(
+            &table
+                .pk()
+                .map(|p| quote_sql(&p.sql_name, request.dialect))
+                .collect::<Vec<_>>()
+                .join(","),
+        ),
         repo_iface = format!("{}Repository", table.struct_name),
         impl_type = impl_type(table, "Repository"),
         fn = table.struct_name,
@@ -114,7 +119,7 @@ func (r *{impl_type}) Delete({get_params}) error {{
 /// Renders `internal/service/<table>_service.go`: interface, thin passthrough
 /// impl, and constructor injecting the repository interface.
 pub(crate) fn render_service(table: &Table, request: &GenerateRequest) -> GeneratedFile {
-    let get_params = params_list(table, "ctx context.Context, ");
+    let contract = Contract::new(table);
     let pk_imports = table.pk_imports();
     let type_imports = if pk_imports.time { "\t\"time\"\n" } else { "" };
     let json_import = if pk_imports.json { "\t\"encoding/json\"\n" } else { "" };
@@ -133,11 +138,7 @@ import (
 // {svc_iface} is the business-layer boundary for the {table} table. Fill in
 // real business rules; the generated methods are thin passthroughs.
 type {svc_iface} interface {{
-	Create(ctx context.Context, m *{s}) error
-	GetByID({get_params}) (*{s}, error)
-	List(ctx context.Context, page int, pageSize int) ([]*{s}, int64, error)
-	Update(ctx context.Context, m *{s}) error
-	Delete({get_params}) error
+{interface}
 }}
 
 type {impl_type} struct {{
@@ -150,33 +151,37 @@ func New{fn}Service(repo repository.{repo_iface}) {svc_iface} {{
 	return &{impl_type}{{repo: repo}}
 }}
 
-func (s *{impl_type}) Create(ctx context.Context, m *{s}) error {{
+func (s *{impl_type}) {create} {{
 	return s.repo.Create(ctx, m)
 }}
 
-func (s *{impl_type}) GetByID({get_params}) (*{s}, error) {{
-	return s.repo.GetByID({get_args_for_service})
+func (s *{impl_type}) {get_by_id} {{
+	return s.repo.GetByID({forward_args})
 }}
 
-func (s *{impl_type}) List(ctx context.Context, page int, pageSize int) ([]*{s}, int64, error) {{
+func (s *{impl_type}) {list} {{
 	return s.repo.List(ctx, page, pageSize)
 }}
 
-func (s *{impl_type}) Update(ctx context.Context, m *{s}) error {{
+func (s *{impl_type}) {update} {{
 	return s.repo.Update(ctx, m)
 }}
 
-func (s *{impl_type}) Delete({get_params}) error {{
-	return s.repo.Delete({get_args_for_service})
+func (s *{impl_type}) {delete} {{
+	return s.repo.Delete({forward_args})
 }}
 "#,
         type_imports = type_imports,
         json_import = json_import,
         module = request.module_path,
         table = table.sql_name,
-        s = format!("model.{}", table.struct_name),
-        get_params = get_params,
-        get_args_for_service = service_get_args(table),
+        interface = contract.interface(),
+        create = contract.signature(Method::Create),
+        get_by_id = contract.signature(Method::GetByID),
+        list = contract.signature(Method::List),
+        update = contract.signature(Method::Update),
+        delete = contract.signature(Method::Delete),
+        forward_args = contract.forward_args(),
         svc_iface = format!("{}Service", table.struct_name),
         repo_iface = format!("{}Repository", table.struct_name),
         impl_type = impl_type(table, "Service"),
@@ -195,7 +200,7 @@ func (s *{impl_type}) Delete({get_params}) error {{
 /// repository interface, caching GetByID in Redis and invalidating on
 /// Update/Delete. Cache errors degrade to DB (spec: 缓存契约).
 pub(crate) fn render_cache(table: &Table, request: &GenerateRequest) -> GeneratedFile {
-    let get_params = params_list(table, "ctx context.Context, ");
+    let contract = Contract::new(table);
 
     // The key format is resolved once (ADR-0002); this layer only supplies the
     // argument expressions for GetByID/Delete (params) and Update (model
@@ -204,13 +209,8 @@ pub(crate) fn render_cache(table: &Table, request: &GenerateRequest) -> Generate
         .cache_key_format
         .as_deref()
         .expect("cache rendering requires a primary key");
-    let cache_key_expr = format!("fmt.Sprintf(\"{}\", {})", key_format, args_list(table));
-    let update_args = table
-        .pk()
-        .map(|p| format!("m.{}", p.go_name))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let update_cache_key = format!("fmt.Sprintf(\"{}\", {})", key_format, update_args);
+    let cache_key_expr = format!("fmt.Sprintf(\"{}\", {})", key_format, contract.get_args());
+    let update_cache_key = format!("fmt.Sprintf(\"{}\", {})", key_format, contract.model_args());
 
     let content = format!(
         r#"// Code generated by gorm-generate. DO NOT EDIT.
@@ -244,11 +244,11 @@ func New{fn}RepoWithCache(repo repository.{repo_iface}, rdb *redis.Client) repos
 	return &{impl_type}{{repo: repo, rdb: rdb}}
 }}
 
-func (c *{impl_type}) Create(ctx context.Context, m *{s}) error {{
+func (c *{impl_type}) {create} {{
 	return c.repo.Create(ctx, m)
 }}
 
-func (c *{impl_type}) GetByID({get_params}) (*{s}, error) {{
+func (c *{impl_type}) {get_by_id} {{
 	key := {cache_key_expr}
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == nil {{
@@ -257,7 +257,7 @@ func (c *{impl_type}) GetByID({get_params}) (*{s}, error) {{
 			return &m, nil
 		}}
 	}}
-	m, dbErr := c.repo.GetByID({get_args_for_cache})
+	m, dbErr := c.repo.GetByID({forward_args})
 	if dbErr != nil {{
 		return nil, dbErr
 	}}
@@ -267,11 +267,11 @@ func (c *{impl_type}) GetByID({get_params}) (*{s}, error) {{
 	return m, nil
 }}
 
-func (c *{impl_type}) List(ctx context.Context, page int, pageSize int) ([]*{s}, int64, error) {{
+func (c *{impl_type}) {list} {{
 	return c.repo.List(ctx, page, pageSize)
 }}
 
-func (c *{impl_type}) Update(ctx context.Context, m *{s}) error {{
+func (c *{impl_type}) {update} {{
 	err := c.repo.Update(ctx, m)
 	if err == nil {{
 		key := {update_cache_key}
@@ -280,8 +280,8 @@ func (c *{impl_type}) Update(ctx context.Context, m *{s}) error {{
 	return err
 }}
 
-func (c *{impl_type}) Delete({get_params}) error {{
-	err := c.repo.Delete({get_args_for_cache})
+func (c *{impl_type}) {delete} {{
+	err := c.repo.Delete({forward_args})
 	if err == nil {{
 		key := {cache_key_expr}
 		_ = c.rdb.Del(ctx, key).Err()
@@ -290,10 +290,14 @@ func (c *{impl_type}) Delete({get_params}) error {{
 }}
 "#,
         module = request.module_path,
-        s = format!("model.{}", table.struct_name),
-        get_params = get_params,
+        s = contract.model_type(),
+        create = contract.signature(Method::Create),
+        get_by_id = contract.signature(Method::GetByID),
+        list = contract.signature(Method::List),
+        update = contract.signature(Method::Update),
+        delete = contract.signature(Method::Delete),
+        forward_args = contract.forward_args(),
         cache_key_expr = cache_key_expr,
-        get_args_for_cache = service_get_args(table),
         update_cache_key = update_cache_key,
         ttl = request.cache_ttl_seconds,
         const_name = table.struct_name,
@@ -310,22 +314,6 @@ func (c *{impl_type}) Delete({get_params}) error {{
     }
 }
 
-fn params_list(table: &Table, prefix: &str) -> String {
-    let parts: Vec<String> = table
-        .pk()
-        .map(|pk| format!("{} {}", param_name(&pk.sql_name), pk.go_type))
-        .collect();
-    format!("{prefix}{}", parts.join(", "))
-}
-
-fn args_list(table: &Table) -> String {
-    table
-        .pk()
-        .map(|pk| param_name(&pk.sql_name))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 /// Unexported impl type name: `users` -> `userRepository` (repo pkg) and
 /// `userService` (service pkg). The two packages are separate, so the same
 /// lowercase prefix can exist in each without collision.
@@ -333,43 +321,19 @@ fn impl_type(table: &Table, suffix: &str) -> String {
     format!("{}{}", table.impl_type_base, suffix)
 }
 
-/// Service passthrough forwards ctx + PK args verbatim.
-fn service_get_args(table: &Table) -> String {
-    format!("ctx, {}", args_list(table))
-}
-
 fn where_chain(table: &Table, dialect: Dialect) -> String {
-    table
+    let chain = table
         .pk()
         .map(|pk| format!("{} = ?", quote_sql(&pk.sql_name, dialect)))
         .collect::<Vec<_>>()
-        .join(" AND ")
-        .replace('"', "\\\"")
+        .join(" AND ");
+    go_string_literal(&chain)
 }
 
-/// Go-idiomatic parameter names for PK columns: `user_id` -> `userId`.
-pub fn param_name(column: &str) -> String {
-    let field = field_name(column);
-    if field.is_empty() {
-        return column.to_string();
-    }
-    let mut out = String::new();
-    for (i, c) in field.chars().enumerate() {
-        if i == 0 {
-            out.extend(c.to_lowercase());
-        } else {
-            out.push(c);
-        }
-    }
-    // An all-caps DDL identifier (`"ID"`, `"URL"`) is an initialism: Go style
-    // wants `id`, not `iD`.
-    if !field.chars().any(|c| c.is_lowercase()) {
-        out = field.to_lowercase();
-    }
-    match out.as_str() {
-        "break" | "default" | "func" | "interface" | "select" | "case" | "defer" | "go" | "map" | "struct" | "chan" | "else" | "goto" | "package" | "switch" | "const" | "fallthrough" | "if" | "range" | "type" | "continue" | "for" | "import" | "return" | "var" | "ctx" | "r" | "s" | "c" | "m" | "err" | "key" | "data" | "dbErr" | "encoded" | "fmt" | "time" | "json" | "model" | "repository" | "redis" | "context" => format!("{out}PK"),
-        _ => out,
-    }
+/// Escapes text for use inside a Go string literal. Identifiers reaching
+/// here are SQL names, so quotes are the only character that needs escaping.
+fn go_string_literal(text: &str) -> String {
+    text.replace('"', "\\\"")
 }
 
 fn quote_sql(name: &str, dialect: Dialect) -> String {
