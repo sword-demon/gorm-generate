@@ -35,12 +35,12 @@
 - **GUI 手动冒烟已完成(2026-11-26)**:用 Screen Recording / 辅助功能权限驱动本地构建的 `.app`。已验证:窗口渲染、Generate 真的生成了 4 个文件(model / repository / service / cache)、文件树、Go 高亮预览、配置表单(修改选项生效)、SQL 与结果分隔条拖动、单条依赖复制、Copy all、Export to directory,以及底部依赖行(`gorm.io/gorm`、`github.com/redis/go-redis/v9`)。用户确认上述真实交互全部成功。
 - CI 的 `pull_request` 触发没有真实 PR 走过。
 - "故意改坏模板验证 CI 变红"没有做(ticket 15 已注明)。
-- 产物未签名、未公证(`v0.1.1` 的构建日志里 `signed=no notarized=no`);这是项目的正式分发约束,不再把 Apple 签名/公证作为待办。README「发布」已写明架构选择、安装到 Applications、Control-点击「打开」及「隐私与安全性 → 仍要打开」的首次放行步骤。
 
 ## 4. Ticket 与已知缺口
 
-- `.scratch/gorm-generate/issues/` 下 19 张 ticket **全部 `resolved`**;ticket 18 记录了 CI clippy 与 Tauri 单测的落地,ticket 19 记录了本轮界面改动与真实 GUI 验收,详情在各文件末尾的 Comments。
+- `.scratch/gorm-generate/issues/` 下 20 张 ticket **全部 `resolved`**;ticket 18 记录了 CI clippy 与 Tauri 单测的落地,ticket 19 记录了本轮界面改动与真实 GUI 验收,ticket 20 记录了「不提供 Apple 签名」的决策,详情在各文件末尾的 Comments。
 - 仍存在的产品限制(已写进 README 的"已知限制"):只支持 MySQL/PG;语义校验错误(module path、标识符、主键)不归属具体语句;导出写盘链路目前以真实 GUI 手动冒烟覆盖,尚无自动化 E2E。
+- **分发约束(ticket 20,已定,不是待办)**:产物刻意未签名、未公证,没有 Apple Developer ID 证书。用户按 README「首次打开未签名 App」的步骤放行(拖到 Applications → Control-点击「打开」→ 必要时「隐私与安全性 → 仍要打开」)。`release.yml` 已不再引用任何 `APPLE_*` secret。
 - 历史 review 报告在 `.scratch/gorm-generate/review.md`,其中 A/B 段的修复主题已落库;该文档是快照,别当成当前状态。
 
 ## 5. 沙箱与构建注意
