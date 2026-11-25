@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  frontend:
+    name: frontend (typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+
+  core:
+    name: core (unit + regressions + go build matrix)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Toolchain pinned to the version used locally (`rustc -V` = 1.90.0).
+      # Installed directly via rustup (preinstalled on ubuntu runners) instead
+      # of a third-party toolchain action.
+      - name: Install Rust 1.90.0
+        run: |
+          rustup toolchain install 1.90.0 --profile minimal
+          rustup default 1.90.0
+
+      # Source cache only: no target/ cache, so stale artifacts can never mask
+      # a compile error.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: false
+
+      # The generated projects pin their own go.mod (crates/core/tests/compile.rs),
+      # so there is no repo go.sum to hash. Bump this key when those require
+      # versions change.
+      - uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: gomod-gorm-v1.31.2-redis-v9.7.0
+
+      - name: cargo test --lib
+        run: cargo test -p gorm-generate-core --lib
+
+      - name: cargo test review_regressions
+        run: cargo test -p gorm-generate-core --test review_regressions
+
+      # Needs Go on PATH and network for `go mod tidy` inside each temp project.
+      - name: cargo test compile (go build matrix)
+        run: cargo test -p gorm-generate-core --test compile
