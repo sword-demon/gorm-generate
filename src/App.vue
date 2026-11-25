@@ -19,10 +19,9 @@ interface GeneratedProject {
   warnings: string[]
 }
 
-interface ParseError {
-  statementIndex: number
-  snippet: string
-}
+type GenerateError =
+  | { kind: "parse"; statementIndex: number; snippet: string }
+  | { kind: "validation"; message: string }
 
 interface ExportResult {
   conflicts: string[]
@@ -97,7 +96,7 @@ const cacheTtlSeconds = ref<number | string>(initial.cacheTtlSeconds)
 
 const project = ref<GeneratedProject | null>(null)
 const selectedPath = ref("")
-const error = ref<ParseError | null>(null)
+const error = ref<GenerateError | null>(null)
 const pending = ref(false)
 const copied = ref("")
 const exporting = ref(false)
@@ -191,23 +190,37 @@ async function generate() {
     selectedTables.value = new Set(project.value.tables)
     selectedPath.value = project.value.files[0]?.path ?? ""
   } catch (cause) {
-    error.value = toParseError(cause)
+    error.value = toGenerateError(cause)
   } finally {
     pending.value = false
   }
 }
 
-// Tauri rejects with whatever the command returned; narrow to the shape we
-// render instead of trusting an arbitrary value.
-function toParseError(cause: unknown): ParseError {
-  if (cause && typeof cause === "object" && "snippet" in cause) {
-    const c = cause as Partial<ParseError>
-    return {
-      statementIndex: typeof c.statementIndex === "number" ? c.statementIndex : 0,
-      snippet: typeof c.snippet === "string" ? c.snippet : String(cause),
+// Tauri rejects with whatever the command returned; narrow to the tagged
+// union we render instead of trusting an arbitrary value.
+function toGenerateError(cause: unknown): GenerateError {
+  if (cause && typeof cause === "object") {
+    const c = cause as {
+      kind?: unknown
+      statementIndex?: unknown
+      snippet?: unknown
+      message?: unknown
+    }
+    if (c.kind === "parse" && typeof c.snippet === "string") {
+      return {
+        kind: "parse",
+        statementIndex:
+          typeof c.statementIndex === "number" ? c.statementIndex : 1,
+        snippet: c.snippet,
+      }
+    }
+    if (c.kind === "validation" && typeof c.message === "string") {
+      return { kind: "validation", message: c.message }
     }
   }
-  return { statementIndex: 0, snippet: String(cause) }
+  // IPC argument failures and anything else are request problems, not parse
+  // errors; label them as such.
+  return { kind: "validation", message: String(cause) }
 }
 
 async function copy(text: string, label: string) {
@@ -271,6 +284,18 @@ const goGetDeps = computed(() => {
 // Parse error toast: shown right after a failed generate, dismissible.
 const showErrorToast = computed(() => error.value !== null && !toastDismissed.value)
 
+const errorTitle = computed(() => {
+  if (error.value === null) return ""
+  return error.value.kind === "parse"
+    ? `Parse error in statement #${error.value.statementIndex}`
+    : "Invalid input"
+})
+
+const errorDetail = computed(() => {
+  if (error.value === null) return ""
+  return error.value.kind === "parse" ? error.value.snippet : error.value.message
+})
+
 function dismissToast() {
   toastDismissed.value = true
 }
@@ -285,13 +310,8 @@ function dismissToast() {
       role="alert"
     >
       <div class="min-w-0">
-        <div class="font-medium">
-          <template v-if="error.statementIndex">
-            Parse error in statement #{{ error.statementIndex }}
-          </template>
-          <template v-else>Generation failed</template>
-        </div>
-        <pre class="mt-1 whitespace-pre-wrap break-words font-mono text-xs">{{ error.snippet }}</pre>
+        <div class="font-medium">{{ errorTitle }}</div>
+        <pre class="mt-1 whitespace-pre-wrap break-words font-mono text-xs">{{ errorDetail }}</pre>
       </div>
       <button
         class="shrink-0 rounded p-1 hover:bg-destructive/20"
@@ -360,10 +380,8 @@ function dismissToast() {
           v-if="error"
           class="m-3 rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive"
         >
-          <template v-if="error.statementIndex">
-            Parse error in statement #{{ error.statementIndex }}:
-          </template>
-          {{ error.snippet }}
+          <div class="font-medium">{{ errorTitle }}</div>
+          <pre class="mt-1 whitespace-pre-wrap break-words font-mono text-xs">{{ errorDetail }}</pre>
         </div>
 
         <template v-else-if="project">

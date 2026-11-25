@@ -32,8 +32,13 @@ fn generates_model_file_for_single_table() {
 fn parse_error_reports_statement_and_snippet() {
     let ddl = "CREATE TABLE `users` (";
     let err = generate(&request(ddl)).expect_err("invalid DDL should error");
-    assert!(err.statement_index >= 1);
-    assert!(!err.snippet.is_empty());
+    match err {
+        GenerateError::Parse { statement_index, snippet } => {
+            assert!(statement_index >= 1);
+            assert!(!snippet.is_empty());
+        }
+        other => panic!("expected a parse error, got {other:?}"),
+    }
 }
 
 #[test]
@@ -92,7 +97,8 @@ fn tables_colliding_on_generated_impl_type_are_rejected() {
                CREATE TABLE `apiuser` (`id` BIGINT NOT NULL, PRIMARY KEY (`id`));";
     let err = generate(&request(ddl)).expect_err("colliding impl types should error");
 
-    assert!(err.snippet.contains("conflicts"), "got: {}", err.snippet);
+    let message = validation_message(err);
+    assert!(message.contains("conflicts"), "got: {message}");
 }
 
 #[test]
@@ -100,7 +106,15 @@ fn digit_leading_generated_identifier_is_rejected() {
     let ddl = "CREATE TABLE `t` (`id` BIGINT NOT NULL, `_1` INT NOT NULL, PRIMARY KEY (`id`));";
     let err = generate(&request(ddl)).expect_err("a field sanitizing to `1` should error");
 
-    assert!(err.snippet.contains("unsupported"), "got: {}", err.snippet);
+    let message = validation_message(err);
+    assert!(message.contains("unsupported"), "got: {message}");
+}
+
+fn validation_message(error: GenerateError) -> String {
+    match error {
+        GenerateError::Validation(message) => message,
+        other => panic!("expected a validation error, got {other:?}"),
+    }
 }
 
 #[test]

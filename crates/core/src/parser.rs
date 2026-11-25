@@ -7,7 +7,7 @@ use sqlparser::dialect::{MySqlDialect, PostgreSqlDialect};
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, Tokenizer};
 
-use crate::generate::{Dialect, ParseError};
+use crate::generate::{Dialect, GenerateError};
 
 pub struct ParsedTable {
     pub name: String,
@@ -26,7 +26,7 @@ pub struct ParsedScript {
 /// Parses the DDL script, keeping only CREATE TABLE statements and PG
 /// COMMENT ON (merged into the referenced table). Other statements are
 /// ignored and counted (spec: 非建表语句被忽略并计数).
-pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, ParseError> {
+pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, GenerateError> {
     let parser_dialect: &dyn sqlparser::dialect::Dialect = match dialect {
         Dialect::MySql => &MySqlDialect {},
         Dialect::PostgreSql => &PostgreSqlDialect {},
@@ -47,13 +47,13 @@ pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, ParseError
         let start = parser.peek_token().span.start;
         let remaining: String = ddl.lines().skip(start.line.saturating_sub(1) as usize)
             .enumerate().map(|(i, line)| if i == 0 { line.chars().skip(start.column.saturating_sub(1) as usize).collect::<String>() } else { format!("\n{line}") }).collect();
-        let statement = parser.parse_statement().map_err(|e| ParseError {
+        let statement = parser.parse_statement().map_err(|e| GenerateError::Parse {
             statement_index: statements.len() + 1,
             snippet: format!("{e}\n{}", remaining.chars().take(500).collect::<String>()),
         })?;
         statements.push(statement);
         if parser.peek_token().token != Token::EOF && !parser.consume_token(&Token::SemiColon) {
-            return Err(ParseError { statement_index: statements.len(), snippet: format!("expected semicolon\n{}", remaining.chars().take(500).collect::<String>()) });
+            return Err(GenerateError::Parse { statement_index: statements.len(), snippet: format!("expected semicolon\n{}", remaining.chars().take(500).collect::<String>()) });
         }
     }
 
@@ -191,7 +191,7 @@ pub fn identifier_key(ident: &sqlparser::ast::Ident, dialect: Dialect) -> String
     }
 }
 
-fn extract_primary_key(columns: &[ColumnDef], constraints: &[TableConstraint], dialect: Dialect) -> Result<Vec<String>, ParseError> {
+fn extract_primary_key(columns: &[ColumnDef], constraints: &[TableConstraint], dialect: Dialect) -> Result<Vec<String>, GenerateError> {
     let inline: Vec<_> = columns.iter().filter(|col| col.options.iter().any(|opt| matches!(opt.option, ColumnOption::PrimaryKey(_)))).map(|col| col.name.value.clone()).collect();
     if !inline.is_empty() { return Ok(inline); }
     for constraint in constraints {
@@ -199,11 +199,11 @@ fn extract_primary_key(columns: &[ColumnDef], constraints: &[TableConstraint], d
             return pk.columns.iter().map(|c| {
                 let key = match &c.column.expr {
                     sqlparser::ast::Expr::Identifier(ident) => identifier_key(ident, dialect),
-                    _ => return Err(ParseError { statement_index: 0, snippet: "unsupported primary key expression or prefix index".into() }),
+                    _ => return Err(GenerateError::Validation("unsupported primary key expression or prefix index".into())),
                 };
-                columns.iter().find(|c| identifier_key(&c.name, dialect) == key).map(|c| c.name.value.clone()).ok_or_else(|| ParseError {
-                    statement_index: 0, snippet: format!("primary key column `{key}` does not exist"),
-                })
+                columns.iter().find(|c| identifier_key(&c.name, dialect) == key).map(|c| c.name.value.clone()).ok_or_else(|| GenerateError::Validation(
+                    format!("primary key column `{key}` does not exist"),
+                ))
             }).collect();
         }
     }
@@ -263,7 +263,7 @@ fn tokenizer_error(
     ddl: &str,
     tokens: &[sqlparser::tokenizer::TokenWithSpan],
     err: &sqlparser::tokenizer::TokenizerError,
-) -> ParseError {
+) -> GenerateError {
     let statement_index = tokens
         .iter()
         .filter(|t| matches!(t.token, Token::SemiColon))
@@ -274,7 +274,10 @@ fn tokenizer_error(
         snippet.push('\n');
         snippet.push_str(&line);
     }
-    ParseError { statement_index, snippet }
+    GenerateError::Parse {
+        statement_index,
+        snippet,
+    }
 }
 
 fn source_line(ddl: &str, line: u64) -> Option<String> {
@@ -288,10 +291,25 @@ fn source_line(ddl: &str, line: u64) -> Option<String> {
 mod tests {
     use super::*;
 
-    fn parse_error(ddl: &str, dialect: Dialect) -> ParseError {
+    fn parse_error(ddl: &str, dialect: Dialect) -> GenerateError {
         match parse_ddl(ddl, dialect) {
             Ok(_) => panic!("expected a parse error"),
             Err(e) => e,
+        }
+    }
+
+    /// Narrowing helpers: these tests assert the parse variant's fields.
+    fn statement_index(error: &GenerateError) -> usize {
+        match error {
+            GenerateError::Parse { statement_index, .. } => *statement_index,
+            other => panic!("expected a parse error, got {other:?}"),
+        }
+    }
+
+    fn snippet(error: &GenerateError) -> &str {
+        match error {
+            GenerateError::Parse { snippet, .. } => snippet,
+            other => panic!("expected a parse error, got {other:?}"),
         }
     }
 
@@ -303,7 +321,7 @@ mod tests {
             &format!("{FIRST}CREATE TABLE b (name VARCHAR(10) DEFAULT 'oops);\n"),
             Dialect::MySql,
         );
-        assert_eq!(e.statement_index, 2, "snippet: {}", e.snippet);
+        assert_eq!(statement_index(&e), 2, "snippet: {}", snippet(&e));
     }
 
     #[test]
@@ -312,7 +330,7 @@ mod tests {
             "CREATE TABLE a (name VARCHAR(10) DEFAULT 'oops);\n",
             Dialect::MySql,
         );
-        assert_eq!(e.statement_index, 1, "snippet: {}", e.snippet);
+        assert_eq!(statement_index(&e), 1, "snippet: {}", snippet(&e));
     }
 
     #[test]
@@ -321,7 +339,7 @@ mod tests {
             &format!("{FIRST}CREATE TABLE b (id BIGINT /* oops\n"),
             Dialect::MySql,
         );
-        assert_eq!(e.statement_index, 2, "snippet: {}", e.snippet);
+        assert_eq!(statement_index(&e), 2, "snippet: {}", snippet(&e));
     }
 
     #[test]
@@ -330,7 +348,7 @@ mod tests {
             &format!("{FIRST}CREATE TABLE b (name VARCHAR(10) DEFAULT 'oops);\n"),
             Dialect::MySql,
         );
-        assert!(e.snippet.contains("Line: 2"), "snippet: {}", e.snippet);
-        assert!(e.snippet.contains("CREATE TABLE b"), "snippet: {}", e.snippet);
+        assert!(snippet(&e).contains("Line: 2"), "snippet: {}", snippet(&e));
+        assert!(snippet(&e).contains("CREATE TABLE b"), "snippet: {}", snippet(&e));
     }
 }

@@ -43,18 +43,19 @@ fn ping() -> String {
     gorm_generate_core::ping()
 }
 
-/// Thin wrapper over the core `generate` seam. Returns a structured error
-/// (statement index + snippet) instead of stringifying, so the UI can show
-/// actionable parse errors.
+/// Thin wrapper over the core `generate` seam. Returns a tagged error so the
+/// UI can tell a broken DDL from invalid options without interpreting a
+/// sentinel value.
 #[tauri::command(async)]
-fn generate_project(request: GenerateRequestPayload) -> Result<GeneratedProjectPayload, ParseErrorPayload> {
+fn generate_project(
+    request: GenerateRequestPayload,
+) -> Result<GeneratedProjectPayload, GenerateErrorPayload> {
     let dialect = match request.dialect.as_str() {
         "mysql" => gorm_generate_core::generate::Dialect::MySql,
         "postgres" => gorm_generate_core::generate::Dialect::PostgreSql,
         other => {
-            return Err(ParseErrorPayload {
-                statement_index: 0,
-                snippet: format!("unsupported dialect `{other}`"),
+            return Err(GenerateErrorPayload::Validation {
+                message: format!("unsupported dialect `{other}`"),
             })
         }
     };
@@ -80,18 +81,38 @@ fn generate_project(request: GenerateRequestPayload) -> Result<GeneratedProjectP
             tables: project.tables,
             warnings: project.warnings,
         })
-        .map_err(|e| ParseErrorPayload {
-            statement_index: e.statement_index,
-            snippet: e.snippet,
-        })
+        .map_err(GenerateErrorPayload::from)
 }
 
-/// Structured parse error for the frontend.
+/// Structured generation failure for the frontend, internally tagged by `kind`.
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ParseErrorPayload {
-    statement_index: usize,
-    snippet: String,
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum GenerateErrorPayload {
+    Parse {
+        #[serde(rename = "statementIndex")]
+        statement_index: usize,
+        snippet: String,
+    },
+    Validation {
+        message: String,
+    },
+}
+
+impl From<gorm_generate_core::GenerateError> for GenerateErrorPayload {
+    fn from(error: gorm_generate_core::GenerateError) -> Self {
+        match error {
+            gorm_generate_core::GenerateError::Parse {
+                statement_index,
+                snippet,
+            } => GenerateErrorPayload::Parse {
+                statement_index,
+                snippet,
+            },
+            gorm_generate_core::GenerateError::Validation(message) => {
+                GenerateErrorPayload::Validation { message }
+            }
+        }
+    }
 }
 
 /// Result of an export attempt. `conflicts` is non-empty when existing files

@@ -44,15 +44,22 @@ pub struct GeneratedProject {
     pub warnings: Vec<String>,
 }
 
-/// Structured parse error: which statement failed and what it looked like.
+/// Why generation failed: the DDL did not parse, or the request and the
+/// generated names did not validate. The distinction is a type, not a
+/// sentinel value, because callers render the two differently.
 #[derive(Debug)]
-pub struct ParseError {
-    pub statement_index: usize,
-    pub snippet: String,
+pub enum GenerateError {
+    /// The DDL failed to parse. `statement_index` is 1-based.
+    Parse {
+        statement_index: usize,
+        snippet: String,
+    },
+    /// The request or the generated identifiers violate a rule.
+    Validation(String),
 }
 
 /// Generates the layered Go project from a DDL script. No IO.
-pub fn generate(request: &GenerateRequest) -> Result<GeneratedProject, ParseError> {
+pub fn generate(request: &GenerateRequest) -> Result<GeneratedProject, GenerateError> {
     validate_request(request)?;
     let script = parser::parse_ddl(&request.ddl, request.dialect)?;
 
@@ -188,9 +195,9 @@ fn render_model(table: &Table) -> GeneratedFile {
     }
 }
 
-fn invalid(snippet: String) -> ParseError { ParseError { statement_index: 0, snippet } }
+fn invalid(message: String) -> GenerateError { GenerateError::Validation(message) }
 
-fn validate_request(request: &GenerateRequest) -> Result<(), ParseError> {
+fn validate_request(request: &GenerateRequest) -> Result<(), GenerateError> {
     let path = &request.module_path;
     if path.is_empty() || path.split('/').any(|part| part.is_empty() || part == "." || part == ".." || part.ends_with('.') || part.starts_with('.'))
         || !path.bytes().all(|c| c.is_ascii_alphanumeric() || b"-._~/".contains(&c)) {
@@ -204,7 +211,7 @@ fn validate_request(request: &GenerateRequest) -> Result<(), ParseError> {
 
 /// Validates identifier safety and generated-name collisions over the resolved
 /// tables. Different from `resolve_table`: resolution is total, this may fail.
-fn validate_tables(tables: &[Table]) -> Result<(), ParseError> {
+fn validate_tables(tables: &[Table]) -> Result<(), GenerateError> {
     fn safe_name(name: &str) -> bool {
         !name.is_empty() && name.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') && !name.as_bytes()[0].is_ascii_digit()
     }

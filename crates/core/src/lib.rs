@@ -12,7 +12,7 @@ mod resolve;
 pub mod types;
 
 pub use export::{export_project, ExportError};
-pub use generate::{generate, GeneratedFile, GeneratedProject, GenerateRequest, ParseError};
+pub use generate::{generate, GenerateError, GenerateRequest, GeneratedFile, GeneratedProject};
 
 /// Liveness probe used to verify the IPC path in the scaffold.
 pub fn ping() -> String {

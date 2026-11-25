@@ -1,4 +1,4 @@
-use gorm_generate_core::{generate, export_project, GenerateRequest, GeneratedFile};
+use gorm_generate_core::{generate, export_project, GenerateError, GenerateRequest, GeneratedFile};
 use gorm_generate_core::generate::Dialect;
 
 fn request(ddl: &str, dialect: Dialect) -> GenerateRequest {
@@ -29,7 +29,7 @@ fn review_rejects_unsafe_or_colliding_names() {
         "CREATE TABLE `we\"ird` (id BIGINT);",
         "CREATE TABLE t (`we\"ird` TEXT);",
     ] {
-        assert!(generate(&request(ddl, Dialect::MySql)).is_err(), "must reject: {ddl}");
+        assert!(matches!(generate(&request(ddl, Dialect::MySql)), Err(GenerateError::Validation(_))), "must reject: {ddl}");
     }
 }
 
@@ -54,11 +54,11 @@ fn review_validates_options() {
     let mut req = request("CREATE TABLE t (id BIGINT PRIMARY KEY);", Dialect::MySql);
     for module in ["", "my module", "bad\"path", "bad\npath", "/absolute", "a/../b"] {
         req.module_path = module.into();
-        assert!(generate(&req).is_err(), "invalid module: {module:?}");
+        assert!(matches!(generate(&req), Err(GenerateError::Validation(_))), "invalid module: {module:?}");
     }
     req.module_path = "example.com/app".into();
     req.cache_ttl_seconds = 0;
-    assert!(generate(&req).is_err());
+    assert!(matches!(generate(&req), Err(GenerateError::Validation(_))));
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn review_export_rejects_symlinks() {
 #[test]
 fn review_quoted_pg_keys_respect_case() {
     let mut req = request("CREATE TABLE t (\"ID\" BIGINT, PRIMARY KEY (id));", Dialect::PostgreSql);
-    assert!(generate(&req).is_err());
+    assert!(matches!(generate(&req), Err(GenerateError::Validation(_))));
     req.ddl = "CREATE TABLE t (\"ID\" BIGINT, PRIMARY KEY (\"ID\"));".into();
     let project = generate(&req).unwrap();
     assert!(project.files[0].content.contains("primaryKey"));
@@ -110,8 +110,13 @@ fn review_quoted_pg_keys_respect_case() {
 fn review_parse_error_reports_actual_statement() {
     let req = request("CREATE TABLE t (id BIGINT); -- semicolon ; in comment\n CREATE TABLE broken (", Dialect::MySql);
     let error = generate(&req).unwrap_err();
-    assert_eq!(error.statement_index, 2);
-    assert!(error.snippet.contains("broken"));
+    match error {
+        GenerateError::Parse { statement_index, snippet } => {
+            assert_eq!(statement_index, 2);
+            assert!(snippet.contains("broken"));
+        }
+        other => panic!("expected a parse error, got {other:?}"),
+    }
 }
 
 #[test]
