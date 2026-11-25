@@ -76,6 +76,22 @@ function labelInput(text: string) {
   return label.find("input")
 }
 
+function configButton() {
+  return wrapper.find('button[aria-label="Configuration"]')
+}
+
+/** Opens the configuration form in the header. */
+async function openConfig() {
+  await configButton().trigger("click")
+  await flushPromises()
+}
+
+function dialog() {
+  const found = wrapper.find('[role="dialog"]')
+  if (!found.exists()) throw new Error("the configuration form is closed")
+  return found
+}
+
 async function generate() {
   await button("Generate").trigger("click")
   await flushPromises()
@@ -202,8 +218,9 @@ describe("App", () => {
 
   it("saves an edited setting once the debounce passes", async () => {
     mountApp()
+    await openConfig()
 
-    await labelInput("module path").setValue("example.com/changed")
+    await dialog().find("input:not([type])").setValue("example.com/changed")
     // The save is debounced by 300 ms; wait it out rather than fight the app's
     // own timers with fake ones.
     await new Promise((resolve) => setTimeout(resolve, 350))
@@ -211,5 +228,80 @@ describe("App", () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null")).toMatchObject({
       modulePath: "example.com/changed",
     })
+  })
+
+  it("keeps the settings out of the header and behind the configuration button", async () => {
+    mountApp()
+
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain("module path")
+    // The header still says what the current settings are.
+    expect(wrapper.text()).toContain("MySQL")
+    expect(wrapper.text()).toContain(defaults().modulePath)
+
+    await openConfig()
+
+    expect(dialog().exists()).toBe(true)
+    expect(dialog().find("select").element).toHaveProperty("value", "mysql")
+  })
+
+  it("generates with the settings edited in the configuration form", async () => {
+    mockedInvoke.mockResolvedValue(project)
+    mountApp()
+    await openConfig()
+
+    await dialog().find("select").setValue("postgres")
+    await dialog().find("input:not([type])").setValue("example.com/edited")
+
+    await generate()
+
+    expect(mockedInvoke).toHaveBeenCalledWith(
+      "generate_project",
+      expect.objectContaining({
+        request: expect.objectContaining({
+          dialect: "postgres",
+          modulePath: "example.com/edited",
+        }),
+      }),
+    )
+  })
+
+  it("copies the go get command of a dependency", async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    mockedInvoke.mockResolvedValue(project)
+    mountApp()
+    await generate()
+
+    await wrapper.find("button.dep-chip").trigger("click")
+    await flushPromises()
+
+    expect(writeText).toHaveBeenCalledWith("go get gorm.io/gorm")
+    expect(wrapper.find("button.dep-chip").text()).toContain("✓")
+  })
+
+  it("copies every dependency command at once", async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    mockedInvoke.mockResolvedValue(project)
+    mountApp()
+    await generate()
+
+    await wrapper.find("button.dep-copy-all").trigger("click")
+    await flushPromises()
+
+    expect(writeText).toHaveBeenCalledWith("go get gorm.io/gorm")
+  })
+
+  it("resizes the panes with the keyboard", async () => {
+    mountApp()
+
+    const separator = wrapper.find('[role="separator"]')
+    expect(separator.attributes("aria-valuenow")).toBe("50")
+
+    await separator.trigger("keydown", { key: "ArrowRight" })
+
+    expect(wrapper.find('[role="separator"]').attributes("aria-valuenow")).toBe("52")
+    expect(wrapper.find("section").attributes("style")).toContain("width: 52%")
   })
 })

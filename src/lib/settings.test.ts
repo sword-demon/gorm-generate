@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { defaults, defaultDdl, loadState } from "./settings"
+import { defaults, defaultDdl, loadState, MAX_PANE_PERCENT, MIN_PANE_PERCENT } from "./settings"
 
 describe("loadState", () => {
   it("returns the defaults without stored state", () => {
@@ -21,6 +21,7 @@ describe("loadState", () => {
       cacheEnabled: true,
       cacheTtlSeconds: 60,
       tinyintAsBool: true,
+      panePercent: 40,
     }
     expect(loadState(JSON.stringify(stored))).toEqual(stored)
   })
@@ -35,6 +36,7 @@ describe("loadState", () => {
         cacheEnabled: "yes",
         cacheTtlSeconds: 0,
         tinyintAsBool: 1,
+        panePercent: "wide",
       }),
     )
     expect(state.ddl).toBe("CREATE TABLE kept (id INT);")
@@ -43,6 +45,12 @@ describe("loadState", () => {
     expect(state.cacheEnabled).toBe(false)
     expect(state.cacheTtlSeconds).toBe(300)
     expect(state.tinyintAsBool).toBe(false)
+    expect(state.panePercent).toBe(base.panePercent)
+  })
+
+  it("clamps the stored pane width", () => {
+    expect(loadState(JSON.stringify({ panePercent: 2 })).panePercent).toBe(MIN_PANE_PERCENT)
+    expect(loadState(JSON.stringify({ panePercent: 99 })).panePercent).toBe(MAX_PANE_PERCENT)
   })
 
   it("rejects non-positive and fractional TTLs", () => {

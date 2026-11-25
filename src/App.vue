@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { computed, ref } from "vue"
+
 import CodePreview from "@/components/CodePreview.vue"
+import ConfigDialog from "@/components/ConfigDialog.vue"
 import SqlEditor from "@/components/SqlEditor.vue"
 import { Button } from "@/components/ui/button"
 import { useCopy } from "@/composables/useCopy"
 import { useExport } from "@/composables/useExport"
+import { usePaneSplit, MAX_PANE_PERCENT, MIN_PANE_PERCENT } from "@/composables/usePaneSplit"
 import { useProject } from "@/composables/useProject"
 import { useSettings } from "@/composables/useSettings"
 
@@ -21,6 +25,7 @@ const {
   tinyintAsBool,
   cacheEnabled,
   cacheTtlSeconds,
+  panePercent,
   persistenceError,
 } = settings
 
@@ -43,6 +48,31 @@ const {
 
 const { exporting, exportMsg, exportToDir } = exporter
 const { copied, copyError, copy } = copier
+
+// The settings live in a dialog; the header only shows what they currently are.
+const configOpen = ref(false)
+const configSummary = computed(() => {
+  const parts = [
+    dialect.value === "postgres" ? "PostgreSQL" : "MySQL",
+    modulePath.value || "no module path",
+  ]
+  if (tinyintAsBool.value) parts.push("tinyint(1) as bool")
+  if (cacheEnabled.value) parts.push(`Redis cache ${cacheTtlSeconds.value}s`)
+  return parts.join(" · ")
+})
+
+// The divider between the SQL pane and the result pane.
+const splitContainer = ref<HTMLElement | null>(null)
+const { dragging, onPointerDown, onKeyDown } = usePaneSplit(panePercent, splitContainer)
+
+// Each dependency is copied as the command that installs it.
+function depLabel(dep: string) {
+  return `dep:${dep}`
+}
+
+const allDependencyCommands = computed(() =>
+  dependencies.value.map((dep) => `go get ${dep}`).join("\n"),
+)
 
 // A new project makes a previous export's or copy's status stale.
 function generate() {
@@ -73,61 +103,81 @@ function generate() {
         ✕
       </button>
     </div>
-    <header
-      class="flex items-center gap-4 border-b border-border px-4 py-3"
-    >
-      <h1 class="text-lg font-semibold tracking-tight">GORM Code Generator</h1>
-      <select
-        v-model="dialect"
-        class="rounded-md border border-input bg-background px-2 py-1 text-sm"
-      >
-        <option value="mysql">MySQL</option>
-        <option value="postgres">PostgreSQL</option>
-      </select>
-      <label class="flex items-center gap-2 text-sm text-muted-foreground">
-        module path
-        <input
-          v-model="modulePath"
-          class="w-64 rounded-md border border-input bg-background px-2 py-1 text-sm"
-        />
-      </label>
-      <label class="flex items-center gap-2 text-sm text-muted-foreground">
-        <input v-model="tinyintAsBool" type="checkbox" class="accent-foreground" />
-        tinyint(1) as bool
-      </label>
-      <label class="flex items-center gap-2 text-sm text-muted-foreground">
-        <input v-model="cacheEnabled" type="checkbox" class="accent-foreground" />
-        Redis cache
-      </label>
-      <label
-        v-if="cacheEnabled"
-        class="flex items-center gap-2 text-sm text-muted-foreground"
-      >
-        TTL(s)
-        <input
-          v-model.number="cacheTtlSeconds"
-          type="number"
-          min="1"
-          class="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm"
-        />
-      </label>
-      <Button :disabled="pending || exporting" @click="generate">
+    <header class="flex items-center gap-3 border-b border-border px-4 py-3">
+      <h1 class="shrink-0 text-lg font-semibold tracking-tight">GORM Code Generator</h1>
+      <p class="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground md:block">
+        {{ configSummary }}
+      </p>
+      <Button class="shrink-0" :disabled="pending || exporting" @click="generate">
         {{ pending ? "Generating..." : "Generate" }}
       </Button>
+      <Button
+        class="shrink-0"
+        variant="outline"
+        size="icon"
+        aria-label="Configuration"
+        title="Configuration"
+        @click="configOpen = true"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="size-4"
+          aria-hidden="true"
+        >
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      </Button>
     </header>
+
+    <ConfigDialog
+      v-model:open="configOpen"
+      v-model:dialect="dialect"
+      v-model:module-path="modulePath"
+      v-model:tinyint-as-bool="tinyintAsBool"
+      v-model:cache-enabled="cacheEnabled"
+      v-model:cache-ttl-seconds="cacheTtlSeconds"
+    />
 
     <div v-if="persistenceError || copyError" role="alert" class="px-3 py-2 text-sm text-destructive">
       {{ persistenceError || copyError }}
     </div>
-    <div class="flex min-h-0 flex-1">
-      <section class="flex w-1/2 min-w-0 flex-col border-r border-border">
+    <div ref="splitContainer" class="flex min-h-0 flex-1">
+      <section
+        class="flex min-w-0 flex-col"
+        :style="{ width: `${panePercent}%` }"
+      >
         <div class="px-3 pt-2 text-xs font-medium text-muted-foreground">
           SQL DDL
         </div>
         <SqlEditor v-model="ddl" />
       </section>
 
-      <section class="flex w-1/2 min-w-0 flex-col">
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize panes"
+        :aria-valuenow="Math.round(panePercent)"
+        :aria-valuemin="MIN_PANE_PERCENT"
+        :aria-valuemax="MAX_PANE_PERCENT"
+        tabindex="0"
+        class="group relative w-2 shrink-0 cursor-col-resize touch-none"
+        @pointerdown="onPointerDown"
+        @keydown="onKeyDown"
+      >
+        <span
+          class="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border group-hover:bg-primary"
+          :class="{ 'bg-primary': dragging }"
+        />
+      </div>
+
+      <section class="flex min-w-0 flex-1 flex-col">
         <div
           v-if="error"
           class="m-3 rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive"
@@ -234,11 +284,23 @@ function generate() {
             class="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground"
           >
             <span class="font-medium">Dependencies</span>
-            <code
+            <button
               v-for="dep in dependencies"
               :key="dep"
-              class="rounded bg-muted px-1.5 py-0.5 font-mono"
-            >go get {{ dep }}</code>
+              class="dep-chip rounded bg-muted px-1.5 py-0.5 font-mono hover:bg-accent"
+              :title="`Copy go get ${dep}`"
+              @click="copy(`go get ${dep}`, depLabel(dep))"
+            >
+              <span v-if="copied === depLabel(dep)" class="text-primary">✓</span>
+              go get {{ dep }}
+            </button>
+            <button
+              v-if="dependencies.length"
+              class="dep-copy-all underline underline-offset-2 hover:text-foreground"
+              @click="copy(allDependencyCommands, 'deps')"
+            >
+              {{ copied === "deps" ? "Copied!" : "Copy all commands" }}
+            </button>
           </div>
         </template>
 

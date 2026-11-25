@@ -13,6 +13,7 @@ export function useSettings() {
   const tinyintAsBool = ref(initial.tinyintAsBool)
   const cacheEnabled = ref(initial.cacheEnabled)
   const cacheTtlSeconds = ref<number | string>(initial.cacheTtlSeconds)
+  const panePercent = ref(initial.panePercent)
   const persistenceError = ref("")
 
   let persistTimer: ReturnType<typeof setTimeout> | undefined
@@ -29,6 +30,7 @@ export function useSettings() {
           tinyintAsBool: tinyintAsBool.value,
           cacheEnabled: cacheEnabled.value,
           cacheTtlSeconds: cacheTtlSeconds.value,
+          panePercent: panePercent.value,
         }),
       )
       persistenceError.value = ""
@@ -52,7 +54,7 @@ export function useSettings() {
 
   // Debounce synchronous storage writes during typing.
   watch(
-    [ddl, modulePath, dialect, tinyintAsBool, cacheEnabled, cacheTtlSeconds],
+    [ddl, modulePath, dialect, tinyintAsBool, cacheEnabled, cacheTtlSeconds, panePercent],
     () => {
       clearTimeout(persistTimer)
       persistTimer = setTimeout(saveState, 300)
@@ -67,6 +69,7 @@ export function useSettings() {
     tinyintAsBool,
     cacheEnabled,
     cacheTtlSeconds,
+    panePercent,
     persistenceError,
   }
 }

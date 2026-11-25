@@ -28,11 +28,12 @@
 - 打包:macOS aarch64 `.app`(17.38 MiB)与 `.dmg`(6.06 MiB),图标已嵌入;`.dmg` 需在沙箱外生成。`v0.1.0` release 里的两个资产就是这组构建(另打包了 6.07 MiB 的 `.app.zip`)。
 - 新增 `.github/workflows/release.yml`:tag 触发 → `macos-15`(aarch64)与 `macos-15-intel`(x86_64)各构建一次 → `tauri-apps/tauri-action@v1` 上传 GitHub Release;tag 必须与 `Cargo.toml` 版本一致(构建前校验);签名/公证的 secrets 可选,不配就是未签名产物。
 - **发布流水线已在真实 CI 上跑通一次**:run `45657109208`(2026-11-26),两格都绿,`v0.1.1` 发布成功。第一次跑(`45652646653`)挂在 `tauri-action` 插的 `--` 与我自带的 `--` 叠加,已修(`tauriScript: npm run tauri`,不带 `--`),教训记在 `tasks/lessons.md` 第 8 条。
+- **界面改动(2026-11-26)**:标题栏只留标题、当前配置摘要、生成按钮与最右端的配置按钮(方言/module path/缓存/TTL/`tinyint(1)` 移进表单);SQL 与结果之间加可拖动分隔条(方向键也能调,宽度记进 localStorage);底部依赖可一键复制 `go get` 命令。前端 83 个测试全绿,浏览器 dev server 里验过头部单行、配置表单(勾 Redis 后出现 TTL)、拖动后宽度与持久化。
 
 未验证:
 
 - **GUI 手动冒烟完全没有做**(当前环境起不了窗口):粘贴 → 生成 → 勾选 → 预览 → 复制 → 导出,尤其 ticket 12 改过的"Rust 选择器 → 写盘 → 冲突确认"链路,只有编译期保证。
-- **GUI 手动冒烟做了大半(2026-11-26)**:用 Screen Recording 权限 + `CGWindowList` 拿窗口几何、`CGEvent` 发事件,驱动本地构建的 `.app`。已验证:窗口渲染、**Generate 真的生成了 4 个文件**(model / repository / service / cache),文件树、Go 代码预览(带高亮)、底部依赖行(`gorm.io/gorm`、`github.com/redis/go-redis/v9`)都正常。**没验成的**:Copy all 与 Export to directory —— 合成点击进不了 WKWebView(WebKit 只认真实输入),且需要辅助功能权限才能用 AX 按名字点按钮。
+- **GUI 手动冒烟做了大半(2026-11-26)**:用 Screen Recording 权限 + `CGWindowList` 拿窗口几何、`CGEvent` 发事件,驱动本地构建的 `.app`。已验证:窗口渲染、**Generate 真的生成了 4 个文件**(model / repository / service / cache),文件树、Go 代码预览(带高亮)、底部依赖行(`gorm.io/gorm`、`github.com/redis/go-redis/v9`)都正常。**没验成的**:Copy all 与 Export to directory —— 合成点击进不了 WKWebView(WebKit 只认真实输入),且需要辅助功能权限才能用 AX 按名字点按钮。改动界面后(配置表单/分隔条/依赖复制)还没在真实 `.app` 里复验过一次。
 - CI 的 `pull_request` 触发没有真实 PR 走过。
 - "故意改坏模板验证 CI 变红"没有做(ticket 15 已注明)。
 - 产物未签名、未公证(`v0.1.1` 的构建日志里 `signed=no notarized=no`)。

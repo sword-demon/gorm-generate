@@ -35,6 +35,7 @@ describe("useSettings", () => {
     expect(settings.cacheEnabled.value).toBe(false)
     expect(settings.cacheTtlSeconds.value).toBe(300)
     expect(settings.tinyintAsBool.value).toBe(false)
+    expect(settings.panePercent.value).toBe(defaults().panePercent)
     stop()
   })
 
@@ -48,6 +49,7 @@ describe("useSettings", () => {
         cacheEnabled: true,
         cacheTtlSeconds: 60,
         tinyintAsBool: true,
+        panePercent: 35,
       }),
     )
     const { settings, stop } = start()
@@ -57,6 +59,7 @@ describe("useSettings", () => {
     expect(settings.cacheEnabled.value).toBe(true)
     expect(settings.cacheTtlSeconds.value).toBe(60)
     expect(settings.tinyintAsBool.value).toBe(true)
+    expect(settings.panePercent.value).toBe(35)
     stop()
   })
 
@@ -82,6 +85,7 @@ describe("useSettings", () => {
     settings.tinyintAsBool.value = true
     settings.cacheEnabled.value = true
     settings.cacheTtlSeconds.value = 60
+    settings.panePercent.value = 35
     await nextTick()
     vi.advanceTimersByTime(300)
 
@@ -92,6 +96,7 @@ describe("useSettings", () => {
       tinyintAsBool: true,
       cacheEnabled: true,
       cacheTtlSeconds: 60,
+      panePercent: 35,
     })
     stop()
   })

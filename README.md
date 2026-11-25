@@ -8,9 +8,11 @@
 
 - 方言：MySQL、PostgreSQL（含 `COMMENT ON` 列注释）
 - 生成产物：`internal/model`、`internal/repository`、`internal/service`，缓存开启时另有 `internal/cache`
-- 可配置：Go module path、缓存开关与 TTL、`tinyint(1)` 是否映射为 `bool`
+- 可配置：Go module path、缓存开关与 TTL、`tinyint(1)` 是否映射为 `bool`；选项收在标题栏右侧的配置表单里，标题栏只显示当前取值
 - 预览：按层分组的文件树 + Go 语法高亮；表勾选只过滤预览与导出，不重新生成
 - 输出：单文件复制、一键复制全部、按目录结构导出到本地目录，同名文件先确认再覆盖
+- 依赖：底部列出 `go get` 命令，点一下即可复制，可整行复制
+- 分栏：SQL 与结果之间的分隔条可左右拖动，也可聚焦后用方向键调整，位置会记住
 - 输入与选项记在 localStorage；解析错误定位到语句序号；不支持的列类型以 `any` 呈现并给警告
 - 幂等：相同输入产生字节级相同的输出
 
