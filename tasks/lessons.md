@@ -62,3 +62,11 @@
 - **根因**：项目 `AGENTS.md` 没有重复这条规则，我在长链路任务（多子代理 review）里只按项目文件与输出风格作答，没有在起草回复前回看全局指令文件；全局与项目指令是**叠加**关系，不是二选一。
 - **规则**：每次组织回复前先确认全局语言设置；项目文件不会覆盖「回复语言」这类全局偏好。中文回复统一使用英文标点，并在中文、英文、数字之间留空格。
 
+
+## 2026-11-26 发布流水线：参数分隔符只该有一个
+
+### 8. 在 action 已经插了 `--` 的地方又加了一个 `--`
+
+- **现象**：第一次真实跑 `release.yml` 两格都挂在 `Build and publish`，报错是 `failed to bundle project: can't open main binary target/release/gorm-generate: No such file or directory`；日志里 npm 回显的是 `> tauri build -- --target x86_64-apple-darwin`。
+- **根因**：`tauri-action` 执行 `<tauriScript> <command> -- <args>`，自己插了一个 `--`；我在 `tauriScript` 里又写了 `npm run tauri --`，两个分隔符叠在一起。npm 只吃掉第一个，第二个作为字面量参数进了脚本 —— tauri CLI 的 `--` 之后是「传给 runner 的参数」，于是 `--target` 被当成 cargo 的参数，cargo 编到了 `target/x86_64-apple-darwin/`，而打包器仍按宿主 target 目录找二进制。
+- **规则**：参数分隔符只能有一个，且要确认**是谁加的**。写 `npm run <script>` 形式的 action 时，不要自己再加 `--`：action 的分隔符就是给 npm 用的，npm 会把它吃掉，CLI 最终收到的是干净的 `build --target <arch>`。这类拼接**在推 tag 之前先用本地同一条命令跑一遍**（本次 `npm run tauri build -- --target …` 本地一跑就能看出来），别用 20 分钟的 CI 循环代替一次本地验证。
