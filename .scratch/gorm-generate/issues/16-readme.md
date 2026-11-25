@@ -6,16 +6,17 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Category:** enhancement
 
-- [ ] README 说明项目做什么（离线 DDL → Go 分层代码，Tauri 2 + Vue 3 + Rust core）
-- [ ] 依赖：Rust、Node、Go（仅编译验证测试需要）、Tauri 系统依赖
-- [ ] 命令：`npm run tauri dev`、`npm run typecheck`、`cargo test -p gorm-generate-core`
-- [ ] 记录本机沙箱/构建注意事项：`RUSTC_WRAPPER= CARGO_TARGET_DIR="$TMPDIR/..."`，`cargo fmt --check` 不是门禁
-- [ ] 打包命令（与 ticket 14 的结果保持一致）
-- [ ] 指向 `spec.md` / `GLOSSARY.md` / `docs/adr/`，并说明 issue 在 `.scratch/<feature>/issues/`
+- [x] README 说明项目做什么（离线 DDL → Go 分层代码，Tauri 2 + Vue 3 + Rust core）
+- [x] 依赖：Rust、Node、Go（仅编译验证测试需要）、Tauri 系统依赖
+- [x] 命令：`npm run tauri dev`、`npm run typecheck`、`cargo test -p gorm-generate-core`
+- [x] 记录本机沙箱/构建注意事项：`RUSTC_WRAPPER= CARGO_TARGET_DIR="$TMPDIR/..."`，`cargo fmt --check` 不是门禁
+- [x] 打包章节说明当前状态；具体命令待 ticket 14 验证后补充
+- [x] 指向 `spec.md` / `GLOSSARY.md` / `docs/adr/`，并说明 issue 在 `.scratch/<feature>/issues/`
+- [x] 已知限制：分词错误序号、不支持的范围、无 UI 自动化
 
 ## Comments
 
@@ -23,3 +24,10 @@
 
 - review C4 的另一半（`bundle.active: false`）已过时；打包本身见 ticket 14，本 ticket 只负责文档。
 - 不要把 `HANDOFF.md` 的内容整段搬进 README：交接文档会过期，README 只写长期有效的部分。
+
+2026-11-25: Implemented.
+
+- 新增根目录 `README.md`：功能、已知限制、技术栈、目录结构、环境要求、开发、测试表、CI 状态、打包状态、文档索引、本地开发提示。
+- 测试表按实际覆盖拆分：相对根目录用例在 `--lib`（`export.rs` 的测试模块），不在 `review_regressions`。
+- CI 与打包都明确标注「尚未真实运行」/「尚未配置图标」，不把未验证的东西写成能用。
+- 打包命令刻意留空，等 ticket 14 跑通后再补，避免文档先于验证。
