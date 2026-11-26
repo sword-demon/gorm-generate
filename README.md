@@ -13,7 +13,7 @@
 - 输出：单文件复制、一键复制全部、按目录结构导出到本地目录，同名文件先确认再覆盖
 - 依赖：底部列出 `go get` 命令，点一下即可复制，可整行复制
 - 分栏：SQL 与结果之间的分隔条可左右拖动，也可聚焦后用方向键调整，位置会记住
-- 输入与选项记在 localStorage；解析错误定位到语句序号；不支持的列类型以 `any` 呈现并给警告
+- 输入与选项记在 localStorage；解析错误定位到语句序号；方言与脚本对不上时直接提示换方言；不支持的列类型以 `any` 呈现并给警告
 - 幂等：相同输入产生字节级相同的输出
 
 需求与契约细节见 [.scratch/gorm-generate/spec.md](.scratch/gorm-generate/spec.md)。
@@ -21,6 +21,7 @@
 ## 已知限制
 
 - 只支持 MySQL 与 PostgreSQL 的 `CREATE TABLE` / `COMMENT ON`；不连接数据库、不内省 schema。
+- 方言必须与脚本一致：MySQL 写的反引号与 `AUTO_INCREMENT` 在 PostgreSQL 方言下不生效（后者会被忽略并给警告）。
 - 解析错误定位到语句序号并附出错片段；module path、标识符等语义校验错误不归属具体语句。
 - 不生成 DTO、事务模板、关联预加载与自定义模板。
 - 界面逻辑有挂载测试（`src/App.test.ts`），导出写盘链路已通过真实 macOS `.app` 手动冒烟，但还没有自动化 E2E。

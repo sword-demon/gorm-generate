@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest"
 
-import { defaults, defaultDdl, loadState, MAX_PANE_PERCENT, MIN_PANE_PERCENT } from "./settings"
+import {
+  defaults,
+  loadState,
+  MAX_PANE_PERCENT,
+  MIN_PANE_PERCENT,
+  mysqlSampleDdl,
+  postgresSampleDdl,
+  sampleDdl,
+  sampleForDialect,
+} from "./settings"
 
 describe("loadState", () => {
   it("returns the defaults without stored state", () => {
@@ -66,6 +75,44 @@ describe("loadState", () => {
   })
 
   it("starts from the default DDL when none was stored", () => {
-    expect(loadState(JSON.stringify({})).ddl).toBe(defaultDdl)
+    expect(loadState(JSON.stringify({})).ddl).toBe(mysqlSampleDdl)
+  })
+
+  it("swaps a stored sample of the other dialect for this dialect's one", () => {
+    const state = loadState(
+      JSON.stringify({ ddl: mysqlSampleDdl, dialect: "postgres" }),
+    )
+    expect(state.ddl).toBe(postgresSampleDdl)
+  })
+
+  it("keeps a stored script the user wrote", () => {
+    const ddl = "CREATE TABLE users (id BIGINT PRIMARY KEY);"
+    expect(loadState(JSON.stringify({ ddl, dialect: "postgres" })).ddl).toBe(ddl)
+  })
+})
+
+describe("sample DDL", () => {
+  it("is written in the dialect it belongs to", () => {
+    expect(sampleDdl("mysql")).toBe(mysqlSampleDdl)
+    expect(sampleDdl("postgres")).toBe(postgresSampleDdl)
+    expect(mysqlSampleDdl).toContain("AUTO_INCREMENT")
+    expect(postgresSampleDdl).toContain("BIGSERIAL")
+    expect(postgresSampleDdl).toContain("COMMENT ON TABLE users")
+  })
+
+  it("swaps the untouched sample of the other dialect", () => {
+    expect(sampleForDialect(mysqlSampleDdl, "postgres")).toBe(postgresSampleDdl)
+    expect(sampleForDialect(postgresSampleDdl, "mysql")).toBe(mysqlSampleDdl)
+  })
+
+  it("leaves a script the user wrote alone", () => {
+    const ddl = "CREATE TABLE users (id BIGINT PRIMARY KEY);"
+    expect(sampleForDialect(ddl, "postgres")).toBeNull()
+    expect(sampleForDialect(ddl, "mysql")).toBeNull()
+  })
+
+  it("leaves the dialect's own sample alone", () => {
+    expect(sampleForDialect(mysqlSampleDdl, "mysql")).toBeNull()
+    expect(sampleForDialect(postgresSampleDdl, "postgres")).toBeNull()
   })
 })

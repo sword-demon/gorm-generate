@@ -79,3 +79,13 @@
 - **现象**：给 release workflow 去掉 Apple 签名步骤后，GitHub 上连续两次出现 `failure` 且 `This run likely failed because of a workflow file issue`，0 秒结束、一个 job 都没有；CI 本身是绿的。
 - **根因**：删掉整段步骤时，把后面 `- name: Build and publish` 那一行多缩进了两格（12 空格而不是 6），于是它在 YAML 里不再是列表项，而是落进了上一个 `run: |` 的脚本块里当普通文本。YAML 本身仍然合法（所以本地解析器、`ruby -e 'YAML.load_file'` 全过），但 workflow 的 schema 失效：`Build and publish` 这一步不再存在，发布流程实际已经不产出了。
 - **规则**：改 workflow 后不能只看 YAML 能不能解析 —— 要看**结构对不对**。最省事的检查是把改动后的文件与上一次跑通过的文件 diff，确认差异只有预期的那些行；再补一条结构断言（每个 step 是 mapping，且恰好有 `uses` 或 `run` 之一）。这次 `git diff 0497858 -- .github/workflows/release.yml` 一眼就能看出 `Build and publish` 的缩进变了。
+
+
+## 2026-11-26 用户报障：PG 方言下自带样例解析不了
+
+### 10. 方言开关只改了枚举，没管编辑器里那份脚本
+
+- **现象**：用户在配置里把方言切到 PostgreSQL，点 Generate 得到一段 sqlparser 原始报错（`Expected: identifier, found: ` at Line: 1, Column: 14`），报错指向反引号，指向不到真正的问题 —— 方言选错了。应用自带的样例只有 MySQL 一份，且与方言下拉框毫无联动。
+- **根因**：把「方言」当成只影响解析的一个枚举值，没意识到界面里存在一份**内容**必须与之一致；同时 core 的错误分类只有「解析失败」与「语义校验失败」两支，方言层面的错被压进了「解析失败」，用户拿到的诊断止步于字符级。
+- **规则**：任何影响输入语义的开关，都要同时检查**应用自带的内容**是否与之一致 —— 带内容耦合的开关要带内容联动；错误分类按**根因**分，不按**现象**分：「解析失败」是现象，「方言不匹配」是根因，只有后者才告诉用户该改什么。
+- **补充**：同一段 DDL 在两种方言下会生成**不同**的模型（sqlparser 只在 MySQL 方言下保留 `AUTO_INCREMENT` 列选项，PG 下这个 token 被吞掉，主键悄悄丢掉 `autoIncrement`）。所以「解析成功」不等于「语义正确」，方言相关的丢失必须显式报警。

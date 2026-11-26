@@ -18,6 +18,24 @@ pub enum Dialect {
     PostgreSql,
 }
 
+impl Dialect {
+    /// The other dialect: the one a script that fails here may be written in.
+    pub(crate) fn other(self) -> Dialect {
+        match self {
+            Dialect::MySql => Dialect::PostgreSql,
+            Dialect::PostgreSql => Dialect::MySql,
+        }
+    }
+
+    /// The name the UI shows for this dialect.
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Dialect::MySql => "MySQL",
+            Dialect::PostgreSql => "PostgreSQL",
+        }
+    }
+}
+
 /// Everything the generator needs; UI-facing options map 1:1.
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
@@ -76,9 +94,10 @@ impl GeneratedProject {
     }
 }
 
-/// Why generation failed: the DDL did not parse, or the request and the
-/// generated names did not validate. The distinction is a type, not a
-/// sentinel value, because callers render the two differently.
+/// Why generation failed: the DDL did not parse, the DDL does not match the
+/// dialect, or the request and the generated names did not validate. The
+/// distinction is a type, not a sentinel value, because callers render the
+/// three differently.
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(tag = "kind", rename_all = "camelCase"))]
@@ -87,6 +106,14 @@ pub enum GenerateError {
     Parse {
         #[cfg_attr(feature = "serde", serde(rename = "statementIndex"))]
         statement_index: usize,
+        snippet: String,
+    },
+    /// The DDL does not parse under the requested dialect but does parse under
+    /// the other one: the dialect does not match the script.
+    DialectMismatch {
+        #[cfg_attr(feature = "serde", serde(rename = "statementIndex"))]
+        statement_index: usize,
+        message: String,
         snippet: String,
     },
     /// The request or the generated identifiers violate a rule.
@@ -111,7 +138,7 @@ pub fn generate(request: &GenerateRequest) -> Result<GeneratedProject, GenerateE
 
     let mut files = Vec::new();
     let mut table_names = Vec::new();
-    let mut warnings = Vec::new();
+    let mut warnings = script.warnings;
     let mut dependencies: Vec<String> = Vec::new();
 
     // One entry point per table, so what a table produces — files, warnings and

@@ -21,12 +21,46 @@ pub struct ParsedScript {
     pub tables: Vec<ParsedTable>,
     /// Statements that are not CREATE TABLE; spec says ignore and count.
     pub ignored_count: usize,
+    /// Facts about the script as a whole, not about any one table.
+    pub warnings: Vec<String>,
 }
 
 /// Parses the DDL script, keeping only CREATE TABLE statements and PG
 /// COMMENT ON (merged into the referenced table). Other statements are
 /// ignored and counted (spec: 非建表语句被忽略并计数).
+///
+/// A script that only fails under the requested dialect is reported as a
+/// dialect mismatch rather than as a broken script.
 pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, GenerateError> {
+    match parse_with_dialect(ddl, dialect) {
+        Ok(script) => Ok(script),
+        Err(error) => Err(diagnose_mismatch(ddl, dialect, error)),
+    }
+}
+
+/// A script that fails under one dialect but parses under the other one is
+/// written in the other dialect: say so, instead of leaving the user with a
+/// raw parser error about syntax the dialect never accepted.
+fn diagnose_mismatch(ddl: &str, dialect: Dialect, error: GenerateError) -> GenerateError {
+    let GenerateError::Parse { statement_index, snippet } = error else {
+        return error;
+    };
+    let other = dialect.other();
+    if parse_with_dialect(ddl, other).is_err() {
+        return GenerateError::Parse { statement_index, snippet };
+    }
+    GenerateError::DialectMismatch {
+        statement_index,
+        message: format!(
+            "this DDL parses as {} DDL, but the dialect is set to {}; change the dialect or edit the DDL",
+            other.label(),
+            dialect.label()
+        ),
+        snippet,
+    }
+}
+
+fn parse_with_dialect(ddl: &str, dialect: Dialect) -> Result<ParsedScript, GenerateError> {
     let parser_dialect: &dyn sqlparser::dialect::Dialect = match dialect {
         Dialect::MySql => &MySqlDialect {},
         Dialect::PostgreSql => &PostgreSqlDialect {},
@@ -39,6 +73,12 @@ pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, GenerateEr
     Tokenizer::new(parser_dialect, ddl)
         .tokenize_with_location_into_buf(&mut tokens)
         .map_err(|e| tokenizer_error(ddl, &tokens, &e))?;
+    // `AUTO_INCREMENT` is a MySQL column option: sqlparser keeps it for the
+    // MySQL dialect and swallows it for the others. The PG dialect would
+    // drop the auto-increment flag without a word, so look for it in the
+    // tokens, before the parser consumes them.
+    let mysql_auto_increment = dialect == Dialect::PostgreSql
+        && tokens.iter().any(|t| matches!(&t.token, Token::Word(w) if w.value.eq_ignore_ascii_case("AUTO_INCREMENT")));
     let mut parser = Parser::new(parser_dialect).with_tokens_with_locations(tokens);
     let mut statements = Vec::new();
     loop {
@@ -112,9 +152,17 @@ pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, GenerateEr
             apply_comment(&mut tables, *object_type, object_name, comment.as_deref(), dialect);
         }
     }
+    let mut warnings = Vec::new();
+    if mysql_auto_increment {
+        warnings.push(
+            "MySQL `AUTO_INCREMENT` is ignored by the PostgreSQL dialect; the column is not marked auto-increment — check the dialect"
+                .to_string(),
+        );
+    }
     Ok(ParsedScript {
         tables,
         ignored_count,
+        warnings,
     })
 }
 

@@ -4,7 +4,10 @@
 
 export const STORAGE_KEY = "gorm-generate:state"
 
-export const defaultDdl =
+export type Dialect = "mysql" | "postgres"
+
+/** The MySQL script the app opens with: backticks and `AUTO_INCREMENT`. */
+export const mysqlSampleDdl =
   "CREATE TABLE `users` (\n" +
   "  `id` BIGINT NOT NULL AUTO_INCREMENT,\n" +
   "  `username` VARCHAR(64) NOT NULL,\n" +
@@ -15,6 +18,36 @@ export const defaultDdl =
   "  `deleted_at` DATETIME NULL,\n" +
   "  PRIMARY KEY (`id`)\n" +
   ") ENGINE=InnoDB COMMENT='用户表';"
+
+/** The PostgreSQL script the app opens with: `BIGSERIAL` and `COMMENT ON`. */
+export const postgresSampleDdl =
+  "CREATE TABLE users (\n" +
+  "  id BIGSERIAL PRIMARY KEY,\n" +
+  "  username VARCHAR(64) NOT NULL,\n" +
+  "  email VARCHAR(128) NOT NULL,\n" +
+  "  age SMALLINT,\n" +
+  "  balance NUMERIC(12,2) NOT NULL,\n" +
+  "  created_at TIMESTAMPTZ NOT NULL,\n" +
+  "  deleted_at TIMESTAMPTZ\n" +
+  ");\n" +
+  "COMMENT ON TABLE users IS '用户表';\n" +
+  "COMMENT ON COLUMN users.username IS '用户名';\n" +
+  "COMMENT ON COLUMN users.email IS '邮箱';"
+
+/** The sample script of one dialect. */
+export function sampleDdl(dialect: Dialect): string {
+  return dialect === "postgres" ? postgresSampleDdl : mysqlSampleDdl
+}
+
+/**
+ * The current dialect's sample, when `ddl` is still the other dialect's
+ * untouched sample. Switching dialect must not leave a script the new dialect
+ * cannot parse; anything the user wrote is left alone.
+ */
+export function sampleForDialect(ddl: string, dialect: Dialect): string | null {
+  const other = dialect === "postgres" ? "mysql" : "postgres"
+  return ddl === sampleDdl(other) ? sampleDdl(dialect) : null
+}
 
 /** The panes never shrink below this share of the container. */
 export const MIN_PANE_PERCENT = 15
@@ -27,7 +60,7 @@ export function clampPanePercent(value: number): number {
 
 export interface PersistedState {
   ddl: string
-  dialect: "mysql" | "postgres"
+  dialect: Dialect
   modulePath: string
   cacheEnabled: boolean
   cacheTtlSeconds: number
@@ -38,7 +71,7 @@ export interface PersistedState {
 
 export function defaults(): PersistedState {
   return {
-    ddl: defaultDdl,
+    ddl: mysqlSampleDdl,
     dialect: "mysql",
     modulePath: "github.com/example/app",
     cacheEnabled: false,
@@ -54,9 +87,14 @@ export function loadState(raw: string | null): PersistedState {
   if (!raw) return base
   try {
     const s = JSON.parse(raw)
+    const dialect: Dialect = s.dialect === "postgres" ? "postgres" : "mysql"
+    const storedDdl = typeof s.ddl === "string" ? s.ddl : base.ddl
     return {
-      ddl: typeof s.ddl === "string" ? s.ddl : base.ddl,
-      dialect: s.dialect === "postgres" ? "postgres" : "mysql",
+      // A stored script that is still the other dialect's sample is swapped
+      // for this dialect's one: the stored sample cannot parse under the
+      // stored dialect.
+      ddl: sampleForDialect(storedDdl, dialect) ?? storedDdl,
+      dialect,
       modulePath: typeof s.modulePath === "string" ? s.modulePath : base.modulePath,
       cacheEnabled: typeof s.cacheEnabled === "boolean" ? s.cacheEnabled : base.cacheEnabled,
       cacheTtlSeconds:

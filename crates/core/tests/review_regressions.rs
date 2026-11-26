@@ -150,3 +150,35 @@ fn review_export_staging_failure_preserves_originals() {
     assert_eq!(original, "original");
     assert_eq!(remaining, 2, "staged temporary files must be cleaned up");
 }
+
+#[test]
+fn review_dialect_mismatch_is_reported_as_such() {
+    let mysql_ddl = "CREATE TABLE `users` (`id` BIGINT NOT NULL AUTO_INCREMENT, PRIMARY KEY (`id`)) ENGINE=InnoDB;";
+    match generate(&request(mysql_ddl, Dialect::PostgreSql)) {
+        Err(GenerateError::DialectMismatch { statement_index, message, snippet }) => {
+            assert_eq!(statement_index, 1);
+            assert!(message.contains("MySQL") && message.contains("PostgreSQL"), "the message names both dialects: {message}");
+            assert!(snippet.contains("Expected: identifier"), "the snippet keeps the parser error: {snippet}");
+        }
+        other => panic!("expected a dialect mismatch, got {other:?}"),
+    }
+    // The same script under its own dialect generates.
+    assert!(generate(&request(mysql_ddl, Dialect::MySql)).is_ok(), "the script must generate under MySQL");
+}
+
+#[test]
+fn review_broken_ddl_stays_a_parse_error() {
+    match generate(&request("CREATE TABLE users (id BIGINT,", Dialect::PostgreSql)) {
+        Err(GenerateError::Parse { statement_index, .. }) => assert_eq!(statement_index, 1),
+        other => panic!("expected a parse error, got {other:?}"),
+    }
+}
+
+#[test]
+fn review_mysql_auto_increment_warns_under_postgres() {
+    let ddl = "CREATE TABLE users (id BIGINT NOT NULL AUTO_INCREMENT, PRIMARY KEY (id));";
+    let postgres = generate(&request(ddl, Dialect::PostgreSql)).expect("should generate");
+    assert!(postgres.warnings.iter().any(|w| w.contains("AUTO_INCREMENT")), "the dropped auto-increment must be reported: {:?}", postgres.warnings);
+    let mysql = generate(&request(ddl, Dialect::MySql)).expect("should generate");
+    assert!(mysql.warnings.is_empty(), "MySQL keeps auto-increment, no warning: {:?}", mysql.warnings);
+}

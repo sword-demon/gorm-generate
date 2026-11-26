@@ -1,6 +1,6 @@
 import { onScopeDispose, ref, watch } from "vue"
 
-import { loadState, STORAGE_KEY } from "@/lib/settings"
+import { loadState, sampleForDialect, STORAGE_KEY } from "@/lib/settings"
 
 export function useSettings() {
   const initial = loadState(localStorage.getItem(STORAGE_KEY))
@@ -54,6 +54,14 @@ export function useSettings() {
     },
     { deep: true },
   )
+
+  // Switching dialect must not leave a script the new dialect cannot parse:
+  // the untouched sample becomes the new dialect's sample. A script the user
+  // wrote is theirs and stays.
+  watch(dialect, (next) => {
+    const swapped = sampleForDialect(ddl.value, next)
+    if (swapped) ddl.value = swapped
+  })
 
   return {
     ddl,
