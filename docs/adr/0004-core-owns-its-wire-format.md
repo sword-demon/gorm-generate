@@ -12,7 +12,7 @@ Tauri 层曾为 `GenerateRequest`、`GeneratedProject`、`GeneratedFile`、`File
 
 core 的公开类型通过可选的 `serde` feature 派生自身的线格式：`GenerateRequest` 只 `Deserialize`，`GeneratedProject` 与 `GenerateError` 只 `Serialize`，`GeneratedFile` 与 `FileKind` 两个方向都要。Tauri 命令直接收发 core 类型，不再拥有 payload 类型。feature 默认关闭，core 的默认构建不依赖 serde；serde 不是 Tauri，且 `src-tauri` 显式启用该 feature，不违反 ADR-0001 的独立性。
 
-线格式是接口的一部分，由 `crates/core/tests/wire_format.rs` 锁定：camelCase 的请求、小写的 `kind`、内部标签的 `kind: parse | validation`。校验错误因此改为命名字段 `Validation { message }`，以便内部标签序列化。
+线格式是接口的一部分，由 `crates/core/tests/wire_format.rs` 锁定：camelCase 的请求、小写的 `kind`、内部标签的 `kind: parse | validation | dialectMismatch`。校验错误因此改为命名字段 `Validation { message }`，以便内部标签序列化。
 
 ## Consequences
 

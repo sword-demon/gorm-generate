@@ -67,6 +67,15 @@ fn errors_serialize_as_a_tagged_union() {
     assert!(json["statementIndex"].is_u64(), "got {json}");
     assert!(json["snippet"].is_string(), "got {json}");
 
+    let mut mismatch_request = request("CREATE TABLE `users` (`id` BIGINT);");
+    mismatch_request.dialect = Dialect::PostgreSql;
+    let mismatch = generate(&mismatch_request).expect_err("dialect mismatch");
+    let json = serde_json::to_value(&mismatch).expect("error serializes");
+    assert_eq!(json["kind"], "dialectMismatch");
+    assert!(json["statementIndex"].is_u64(), "got {json}");
+    assert!(json["message"].is_string(), "got {json}");
+    assert!(json["snippet"].is_string(), "got {json}");
+
     let mut bad_request = request("CREATE TABLE t (id BIGINT PRIMARY KEY);");
     bad_request.module_path = String::new();
     let validation = generate(&bad_request).expect_err("invalid module path");

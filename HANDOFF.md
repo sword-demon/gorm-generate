@@ -25,11 +25,13 @@
 - CI(`.github/workflows/ci.yml`)现在三个 job:`frontend (typecheck + tests)`、`core (unit + regressions + go build matrix)`、`tauri (unit tests + clippy)`。最近一次全绿是 `45649324165`(frontend 16s / core 1m35s / tauri 3m44s)。action 为 `checkout@v7` / `setup-node@v7` / `cache@v6` / `setup-go@v7`。
 - 日志确认各测试目标真实执行:`--lib` 61 passed、`--test review_regressions` 12 passed、`--test wire_format` 5 passed、`--test compile` 2 passed(4 格矩阵 + 幂等)、Tauri 单测 2 passed、前端 62 passed。
 - 本地:`npm run typecheck`、`npm test`、`npm run build` 与上述 Rust 目标均通过;`--test compile` 需在沙箱外运行(见 §5)。
+- **ticket 21 改动本地验证(2026-11-26)**:`cargo test -p gorm-generate-core --all-features --lib --test review_regressions --test wire_format` 全绿(61 + 15 + 5);`cargo clippy --workspace --all-features --all-targets` 无告警;`cargo test -p gorm-generate`(Tauri)2 passed;前端 `npm run typecheck`、`npm test`(94 passed)与 `npm run build` 全绿;`cargo test -p gorm-generate-core --test compile` 在沙箱外跑通(2 passed);浏览器 dev server 里验过「切方言换样例」与「老存档读回时换样例」。**本次改动尚未在 CI 上跑过**。
 - 打包:macOS aarch64 `.app`(17.38 MiB)与 `.dmg`(6.06 MiB),图标已嵌入;`.dmg` 需在沙箱外生成。`v0.1.0` release 里的两个资产就是这组构建(另打包了 6.07 MiB 的 `.app.zip`)。
 - 新增 `.github/workflows/release.yml`:tag 触发 → `macos-15`(aarch64)与 `macos-15-intel`(x86_64)各构建一次 → `tauri-apps/tauri-action@v1` 上传 GitHub Release;tag 必须与 `Cargo.toml` 版本一致(构建前校验);签名/公证的 secrets 可选,不配就是未签名产物。
 - **发布流水线已在真实 CI 上跑通两次**:run `45657109208`(2026-11-26)发布 `v0.1.1`;run `45700406121`(2026-11-26)发布 `v0.1.2`,两格(macos-15 aarch64 / macos-15-intel x64)都绿、资产齐全。第一次跑(`45652646653`)挂在 `tauri-action` 插的 `--` 与我自带的 `--` 叠加,已修(`tauriScript: npm run tauri`,不带 `--`),教训记在 `tasks/lessons.md` 第 8 条。
 - **界面改动(2026-11-26)**:标题栏只留标题、当前配置摘要、生成按钮与最右端的配置按钮(方言/module path/缓存/TTL/`tinyint(1)` 移进表单);SQL 与结果之间加可拖动分隔条(方向键也能调,宽度记进 localStorage);底部依赖可一键复制 `go get` 命令。前端 83 个测试全绿,浏览器 dev server 里验过头部单行、配置表单(勾 Redis 后出现 TTL)、拖动后宽度与持久化。
 - **全仓简化(PR #1 / #2,2026-11-26)**:删掉渲染、解析与前端监听里的重复工作(层契约每张表只算一次、PK import 片段共用一个 helper、解析错误片段改为惰性构造、`ident_value` 只留一份、主键 membership 用集合、窗口监听清理复用同一组函数引用),生成的 Go 产物逐字节不变(黄金 fixture 全绿);顺带修掉两处「测试声称覆盖但其实没断言」的用例。经验记在 `docs/solutions/design-patterns/shared-implementation-versus-shared-computation.md`,术语在 `CONCEPTS.md`。
+- **PG 方言修复(ticket 21,2026-11-26)**:用户报障「切到 PostgreSQL 后自带样例解析不了」。根因两层:界面只有一份 MySQL 样例且与方言下拉框无联动;core 的错误分类把方言问题压进了「解析失败」。修法:core 加 `DialectMismatch { statement_index, message, snippet }`(用另一个方言重试一次判定),PG 下被 sqlparser 吞掉的 MySQL `AUTO_INCREMENT` 改为脚本级警告而非静默;前端每个方言一份样例,切方言时只替换「仍是样例原文」的脚本(读回旧存档同样替换)。决策与理由记在 `docs/adr/0010`,ticket 在 `.scratch/gorm-generate/issues/21-*.md`,教训记在 `tasks/lessons.md` 第 10 条。
 
 未验证:
 
@@ -39,7 +41,7 @@
 
 ## 4. Ticket 与已知缺口
 
-- `.scratch/gorm-generate/issues/` 下 20 张 ticket **全部 `resolved`**;ticket 18 记录了 CI clippy 与 Tauri 单测的落地,ticket 19 记录了本轮界面改动与真实 GUI 验收,ticket 20 记录了「不提供 Apple 签名」的决策,详情在各文件末尾的 Comments。
+- `.scratch/gorm-generate/issues/` 下 21 张 ticket **全部 `resolved`**;ticket 18 记录了 CI clippy 与 Tauri 单测的落地,ticket 19 记录了本轮界面改动与真实 GUI 验收,ticket 20 记录了「不提供 Apple 签名」的决策,ticket 21 记录了 PG 方言样例与方言不匹配诊断的修复,详情在各文件末尾的 Comments。
 - 仍存在的产品限制(已写进 README 的"已知限制"):只支持 MySQL/PG;语义校验错误(module path、标识符、主键)不归属具体语句;导出写盘链路目前以真实 GUI 手动冒烟覆盖,尚无自动化 E2E。
 - **分发约束(ticket 20,已定,不是待办)**:产物刻意未签名、未公证,没有 Apple Developer ID 证书。用户按 README「首次打开未签名 App」的步骤放行(拖到 Applications → Control-点击「打开」→ 必要时「隐私与安全性 → 仍要打开」)。`release.yml` 已不再引用任何 `APPLE_*` secret。
 - 历史 review 报告在 `.scratch/gorm-generate/review.md`,其中 A/B 段的修复主题已落库;该文档是快照,别当成当前状态。

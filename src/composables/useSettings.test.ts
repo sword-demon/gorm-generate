@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { effectScope, nextTick } from "vue"
 
-import { defaults, STORAGE_KEY } from "@/lib/settings"
+import { defaults, mysqlSampleDdl, postgresSampleDdl, STORAGE_KEY } from "@/lib/settings"
 
 import { useSettings } from "./useSettings"
 
@@ -124,6 +124,28 @@ describe("useSettings", () => {
     localStorage.clear()
     window.dispatchEvent(new Event("pagehide"))
     expect(stored()).toBeNull()
+  })
+
+  it("swaps the untouched sample when the dialect changes", async () => {
+    const { settings, stop } = start()
+    expect(settings.ddl.value).toBe(mysqlSampleDdl)
+
+    settings.dialect.value = "postgres"
+    await nextTick()
+
+    expect(settings.ddl.value).toBe(postgresSampleDdl)
+    stop()
+  })
+
+  it("keeps a script the user wrote when the dialect changes", async () => {
+    const { settings, stop } = start()
+    settings.ddl.value = "CREATE TABLE t (id INT);"
+
+    settings.dialect.value = "postgres"
+    await nextTick()
+
+    expect(settings.ddl.value).toBe("CREATE TABLE t (id INT);")
+    stop()
   })
 
   it("reports a storage failure without throwing", async () => {

@@ -23,6 +23,29 @@ describe("toGenerateError", () => {
     })
   })
 
+  it("keeps a dialect mismatch with its message and snippet", () => {
+    expect(
+      toGenerateError({
+        kind: "dialectMismatch",
+        statementIndex: 1,
+        message: "this DDL parses as MySQL DDL",
+        snippet: "CREATE TABL",
+      }),
+    ).toEqual({
+      kind: "dialectMismatch",
+      statementIndex: 1,
+      message: "this DDL parses as MySQL DDL",
+      snippet: "CREATE TABL",
+    })
+  })
+
+  it("rejects a dialect mismatch without a message", () => {
+    expect(toGenerateError({ kind: "dialectMismatch", snippet: "x" })).toEqual({
+      kind: "validation",
+      message: "[object Object]",
+    })
+  })
+
   it("keeps a validation error", () => {
     expect(toGenerateError({ kind: "validation", message: "bad module path" })).toEqual({
       kind: "validation",
@@ -59,6 +82,19 @@ describe("generate error presentation", () => {
     const error = { kind: "validation" as const, message: "bad module path" }
     expect(generateErrorTitle(error)).toBe("Invalid input")
     expect(generateErrorDetail(error)).toBe("bad module path")
+  })
+
+  it("leads with the explanation for a dialect mismatch", () => {
+    const error = {
+      kind: "dialectMismatch" as const,
+      statementIndex: 2,
+      message: "this DDL parses as MySQL DDL",
+      snippet: "CREATE TABL",
+    }
+    expect(generateErrorTitle(error)).toBe("Dialect mismatch in statement #2")
+    expect(generateErrorDetail(error)).toBe(
+      "this DDL parses as MySQL DDL\n\nCREATE TABL",
+    )
   })
 })
 

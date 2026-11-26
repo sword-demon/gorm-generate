@@ -308,7 +308,7 @@ function generate() {
           v-else
           class="flex flex-1 items-center justify-center text-sm text-muted-foreground"
         >
-          Paste MySQL DDL and click Generate.
+          Paste {{ dialect === "postgres" ? "PostgreSQL" : "MySQL" }} DDL and click Generate.
         </div>
       </section>
     </div>

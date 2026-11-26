@@ -53,7 +53,7 @@ Go 开发者拿到建表语句后，需要手写模型、仓储、服务接口�
 ## Implementation Decisions
 
 - **架构**: 纯本地 Tauri 2 应用。Rust 核心库负责解析与生成，Tauri 命令是薄包装；Vue 前端只负责表单、预览与导出交互。遵循 ADR-0001（DDL 文本输入与自研分层生成）。
-- **输入**: DDL 文本 + 方言枚举（MySQL | PostgreSQL）。只处理 `CREATE TABLE` 与 PG 的 `COMMENT ON`；其他语句忽略并计入警告。解析失败返回结构化错误（语句序号 + 片段）。
+- **输入**: DDL 文本 + 方言枚举（MySQL | PostgreSQL）。只处理 `CREATE TABLE` 与 PG 的 `COMMENT ON`；其他语句忽略并计入警告。解析失败返回结构化错误（语句序号 + 片段）。应用每个方言带一份样例 DDL（ADR-0010）：方言变化时，只有当编辑器里的脚本仍是另一方言的样例原文时才换成新方言的样例，用户写过的脚本不动。
 - **生成核心 API**: `generate(request) -> GeneratedProject`。请求含 DDL 文本、方言、module path、缓存开关、缓存 TTL、`tinyint(1)` 开关；结果含文件集合（相对路径 + 内容）、表清单、警告列表、依赖清单（由实际生成的文件推导，供 `go get` 提示）。纯函数、无 IO、同输入字节级同输出。
 - **产物目录**: `internal/model`、`internal/repository`、`internal/service`、`internal/cache`（仅缓存开启时）。文件按表命名：`user.go`、`user_repo.go`、`user_service.go`、`user_cache.go`；接口与实现在同一文件。module path 决定 import 前缀。
 - **模型规则**: 严格按 DDL，不嵌 `gorm.Model`，不添加 DDL 之外的字段；总是生成 `TableName()`；gorm tag 仅保留 `column`/`primaryKey`/`autoIncrement`/`not null`，生成列（`GENERATED ... AS (...)`）另加 `->`（只读）；JSON tag 使用列名原样；不生成外键关联字段；不生成 `index`/`uniqueIndex`/`default`/`type`/`size` tag（DDL 是索引与默认值的事实源）。
@@ -89,4 +89,5 @@ Go 开发者拿到建表语句后，需要手写模型、仓储、服务接口�
 - 参考: GORM 文档、`gorm.io/cli`、gormt；设计决策见 `docs/adr/0001`、`docs/adr/0002` 与 `GLOSSARY.md`。
 - sqlparser 注意点: `AUTO_INCREMENT` 以 DialectSpecific token 形式出现，需特判；SQL 文本注释会被丢弃；表级 `PARTITION BY` 不被解析。
 - 生成产物依赖: `gorm.io/gorm`；缓存开启时另需 `github.com/redis/go-redis/v9`。界面结果区展示对应 `go get` 提示。
-- 错误分类: `generate` 返回 `GenerateError`，判别式是类型而非哨兵值。`Parse { statement_index, snippet }` 只用于 DDL 解析失败（语句级解析错误与分词错误：未闭合字符串/注释/引号标识符），携带 1 起算的真实语句序号、出错片段（最多 500 字符）与出错行；`Validation(String)` 用于 module path、标识符、命名冲突与主键等语义校验错误。前端按 `kind`（`parse` | `validation`）分别渲染，不再解释序号 0。
+- 错误分类: `generate` 返回 `GenerateError`，判别式是类型而非哨兵值。`Parse { statement_index, snippet }` 只用于 DDL 解析失败（语句级解析错误与分词错误：未闭合字符串/注释/引号标识符），携带 1 起算的真实语句序号、出错片段（最多 500 字符）与出错行；`Validation(String)` 用于 module path、标识符、命名冲突与主键等语义校验错误；`DialectMismatch { statement_index, message, snippet }` 用于脚本在请求的方言下解析失败、在另一个方言下能解析的情形（ADR-0010），`message` 点名两个方言并给出改法。前端按 `kind`（`parse` | `validation` | `dialectMismatch`）分别渲染，不再解释序号 0。
+- 方言丢弃的语义不静默: sqlparser 只在 MySQL 方言下保留 `AUTO_INCREMENT` 列选项，PG 方言下该 token 被吞掉。core 在分词阶段发现这种情况，产出脚本级警告（主键不会被标记为自增），而不是给出一份与 DDL 不符的模型。
