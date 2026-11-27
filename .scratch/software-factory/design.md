@@ -142,7 +142,7 @@
 
 建议：先做 P0 的 `fmt` ratchet，跑两周看人工 review 成本；收益未验证前不投 P2。
 
-**进展（2026-11-27）**：`fmt` ratchet 已完成 —— 全仓 rustfmt-clean，CI 的 gate 从「例外清单」收敛为 `cargo fmt --all --check`，`rustfmt-exceptions.txt` 与 `scripts/fmt-gate.sh` 已删除。下一个 P0 候选是前端 E2E（未开始）。
+**进展（2026-11-27）**：`fmt` ratchet 已完成 —— 全仓 rustfmt-clean，CI 的 gate 从「例外清单」收敛为 `cargo fmt --all --check`，`rustfmt-exceptions.txt` 与 `scripts/fmt-gate.sh` 已删除。前端最小 E2E 也已落地：`e2e/app.spec.ts`（Playwright + Chromium，Tauri IPC 在浏览器里打桩），CI 的 `frontend` job 会跑。
 
 ## 6. 待拍板
 
