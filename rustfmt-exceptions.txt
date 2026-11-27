@@ -1,4 +1,0 @@
-# Files rustfmt does not accept yet. scripts/fmt-gate.sh checks every tracked
-# .rs file except these. The list may only shrink: fix a file, drop its line in
-# the same commit. A listed file that is already clean fails the gate.
-crates/core/src/generate/tests.rs
