@@ -1,26 +1,13 @@
 <script setup lang="ts">
-import { ref, watch } from "vue"
-
-import { highlight, type HighlightLang } from "@/lib/highlight"
+import { useHighlight } from "@/composables/useHighlight"
+import type { HighlightLang } from "@/lib/highlight"
 
 const props = defineProps<{
   code: string
   lang: HighlightLang
 }>()
 
-const html = ref("")
-// Guards against a stale async result overwriting a newer one.
-let token = 0
-
-watch(
-  () => [props.code, props.lang] as const,
-  async ([code, lang]) => {
-    const mine = ++token
-    const rendered = await highlight(code, lang)
-    if (mine === token) html.value = rendered
-  },
-  { immediate: true },
-)
+const html = useHighlight(() => ({ code: props.code, lang: props.lang }))
 </script>
 
 <template>

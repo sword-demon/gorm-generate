@@ -57,7 +57,7 @@ src-tauri/            Tauri 命令（generate_project / export_project / pick_ex
 src/                  Vue 界面
   App.vue             装配 composable 与模板
   components/         SqlEditor、CodePreview
-  composables/        设置持久化、生成、导出、复制的独立状态模块
+  composables/        设置持久化、生成、导出、复制、分栏、高亮的独立状态模块
   lib/                IPC 线格式与设置加载的纯函数
 e2e/                  Playwright 浏览器 E2E（Tauri IPC 打桩）
 ```
@@ -90,7 +90,7 @@ npm run tauri dev
 | `cargo clippy --workspace --all-targets -- -D warnings` | 全 workspace lint |
 | `npm run typecheck` | 前端类型检查 |
 | `npx vite build` | 前端打包（CI 也跑，用来抓打包期错误） |
-| `npm test` | 前端单测：IPC 错误收窄、设置加载、四个 composable（设置持久化、生成、导出、复制），以及 App.vue 的模板接线（挂载测试） |
+| `npm test` | 前端单测：IPC 错误收窄、设置加载、六个 composable（设置持久化、生成、导出、复制、分栏、高亮），以及 App.vue 的模板接线（挂载测试） |
 | `npm run test:e2e` | 浏览器 E2E（Playwright + Chromium，首次先跑 `npx playwright install chromium`）：示例脚本启动、生成与表过滤、设置跨刷新持久化、方言不匹配提示；Tauri IPC 在浏览器里打桩，真实 composable 与模板照常运行 |
 
 `compile` 第一次运行会在临时项目里执行 `go mod tidy` 拉取 gorm 与 go-redis，因此需要能访问 module proxy。
