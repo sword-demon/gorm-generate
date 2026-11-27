@@ -26,6 +26,15 @@
 - 不生成 DTO、事务模板、关联预加载与自定义模板。
 - 界面有挂载测试（`src/App.test.ts`）与浏览器 E2E（`e2e/app.spec.ts`，Tauri IPC 打桩；导出写盘链路不在其中）；导出写盘链路已通过真实 macOS `.app` 手动冒烟，仍靠人工验证。
 
+## 报告问题
+
+标题栏的问号按钮会用系统浏览器打开预填好的 bug 表单（版本、方言、缓存开关已经填好），也可以直接从 [Issues](https://github.com/sword-demon/gorm-generate/issues/new/choose) 进入：
+
+- **Bug 报告**：需要版本、方言、缓存开关与**已脱敏**的最小 DDL。粘贴的 DDL 会公开可见，请去掉表名与注释里的业务信息。
+- **功能请求**：先看上面的「已知限制」。
+
+同一版本、同一类报错会在 triage 阶段合并，不需要重复提交。
+
 ## 技术栈
 
 | 层 | 技术 |
@@ -143,7 +152,7 @@ tag 必须与 `Cargo.toml` 的版本一致,否则 workflow 在构建前就会失
 - [.scratch/gorm-generate/spec.md](.scratch/gorm-generate/spec.md) —— 需求、实现决策、测试策略
 - [GLOSSARY.md](GLOSSARY.md) —— 领域用词
 - [docs/adr/](docs/adr/) —— 架构决策记录
-- [.scratch/gorm-generate/issues/](.scratch/gorm-generate/issues/) —— issue 与 ticket（本地 markdown tracker）
+- [.scratch/gorm-generate/issues/](.scratch/gorm-generate/issues/) —— 设计期的本地 issue 与 ticket（历史记录；公开报障请走 [GitHub Issues](https://github.com/sword-demon/gorm-generate/issues)）
 - [HANDOFF.md](HANDOFF.md) —— 上一次会话的交接说明
 
 ## 本地开发提示

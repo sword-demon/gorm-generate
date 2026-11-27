@@ -2,7 +2,7 @@
 
 按 `/software-factory` 的术语与设计法走一遍本仓库。这是一份设计稿，不是待办。
 
-**状态（2026-11-27）**：全部仍是设计。A 自动 review 试过一版（PR #6），因仓库没有可供 GitHub Actions 使用的 Anthropic 凭证（API key 与订阅 token 都没有）而关闭，分支已删除。review 改为推送前在会话里跑 `/code-review`，不经过 CI。其余任务若要落地，同样先解决「run 在哪里、用什么凭证」这一前提。
+**状态（2026-11-27）**：A 自动 review 试过一版（PR #6），因仓库没有可供 GitHub Actions 使用的 Anthropic 凭证（API key 与订阅 token 都没有）而关闭，分支已删除；review 改为推送前在会话里跑 `/code-review`。E ratchet 的四项与第一次 F retro 已落地，D triage 的入口（issue forms + README + 应用内报告）也已就位，见 §7 进展。其余需要「run 在 CI 上自动执行」的任务，仍要先解决「run 在哪里、用什么凭证」。
 
 ## 0. 要解决的问题
 
@@ -146,9 +146,11 @@
 
 第一次 retro（F）也做了：从 #20–#22 沉淀两条教训到 `tasks/lessons.md`（第二个测试运行器要先划收集边界；抽取共享守卫时区分「输出兼容」与「把旧缺陷搬过去」），并把浏览器 E2E 的 IPC 打桩法记进 `docs/solutions/testing/tauri-browser-e2e.md`。
 
+外部报障入口已落地：`.github/ISSUE_TEMPLATE/` 的 bug / feature 表单（bug 强制版本、方言、缓存开关与已脱敏的最小 DDL）、README「报告问题」、应用内标题栏的问号按钮（经 `tauri-plugin-opener` 用系统浏览器打开预填 URL；只预填版本、方言、缓存，不预填 DDL）。D triage 的前提已满足，等第一个真实报障。
+
 ## 6. 待拍板
 
-1. Ticket tracker 切换到 GitHub Issues（本地 markdown 是否保留为工作区）？
+1. Ticket tracker 切换到 GitHub Issues（本地 markdown 是否保留为工作区）？**已按此落地（2026-11-27）**：公开报障走 GitHub Issues 的 issue forms 与应用内入口，`.scratch/` 保留为设计与历史记录。
 2. 是否接受 bot 以 App 身份 push 分支（这是 B/C 的前提）。
 3. 公开 issue 的隐私边界：用户贴的 DDL 会公开，应用内「报告问题」需要提示。
 4. 第一个落地物：A 试过并已关闭（原因见顶部状态），当前从 E ratchet 开始，见 §7。

@@ -89,6 +89,9 @@ fn export_project(
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // The in-app report entry opens the prefilled issue page in the
+        // system browser; the webview itself never navigates away.
+        .plugin(tauri_plugin_opener::init())
         .manage(ExportRoot::default())
         .invoke_handler(tauri::generate_handler![
             generate_project,

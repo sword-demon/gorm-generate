@@ -58,7 +58,7 @@ CI 侧只需两步：`npx playwright install --with-deps chromium` 与 `npm run 
 
 ## Why This Matters
 
-挂载测试证明组件能装配，但不能证明应用能启动、生成按钮真的连到 composable、刷新后 localStorage 读回正确。浏览器 E2E 用真实页面补上这一段，同时避开 Tauri 桌面壳在 runner 上的不稳定因素（GUI 依赖、权限、选择器）。因为桩只在一处，Rust 侧的线格式不会被复制到前端测试里 —— 它的契约由 `wire_format` 测试与 `src/lib/ipc.ts` 的收窄共同约束；代价是桩对参数不敏感（调用 `invoke` 时传了什么不校验），这一层仍靠单元测试。
+挂载测试证明组件能装配，但不能证明应用能启动、生成按钮真的连到 composable、刷新后 localStorage 读回正确。浏览器 E2E 用真实页面补上这一段，同时避开 Tauri 桌面壳在 runner 上的不稳定因素（GUI 依赖、权限、选择器）。因为桩只在一处，Rust 侧的线格式不会被复制到前端测试里 —— 它的契约由 `wire_format` 测试与 `src/lib/ipc.ts` 的收窄共同约束。生成路径不校验 `invoke` 的请求参数，这一层仍靠单元测试；报告入口的 `plugin:opener|open_url` 参数则由一条 E2E 直接断言。
 
 ## When to Apply
 

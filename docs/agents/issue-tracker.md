@@ -1,8 +1,13 @@
-# Issue tracker: Local Markdown
+# Issue tracker: GitHub Issues for reports, local Markdown for design work
 
-Issues and specs for this repo live as markdown files in `.scratch/`.
+The tracker is split by audience:
+
+- **Public reports** — bug reports and feature requests from users — live in GitHub Issues. New issues go through the forms in `.github/ISSUE_TEMPLATE/` (bug: version, dialect, cache flag, redacted minimal DDL; feature: problem, proposal, alternatives). The app's header button opens the bug form prefilled with version, dialect and the cache flag. Triage and dedup happen on GitHub.
+- **Design-time tickets and specs** — anything the skills below write while exploring the codebase — stay as markdown files in `.scratch/`. The rest of this document describes that local tracker.
 
 ## Conventions
+
+Design issues and specs for this repo live as markdown files in `.scratch/`.
 
 - One feature per directory: `.scratch/<feature-slug>/`
 - The spec is `.scratch/<feature-slug>/spec.md`

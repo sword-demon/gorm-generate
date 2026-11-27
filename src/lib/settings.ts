@@ -6,6 +6,11 @@ export const STORAGE_KEY = "gorm-generate:state"
 
 export type Dialect = "mysql" | "postgres"
 
+/** The label shown in the header and in the bug form's dialect dropdown. */
+export function dialectLabel(dialect: Dialect): string {
+  return dialect === "postgres" ? "PostgreSQL" : "MySQL"
+}
+
 /** The MySQL script the app opens with: backticks and `AUTO_INCREMENT`. */
 export const mysqlSampleDdl =
   "CREATE TABLE `users` (\n" +
