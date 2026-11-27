@@ -1407,7 +1407,7 @@ dependencies = [
 
 [[package]]
 name = "gorm-generate"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "gorm-generate-core",
  "serde",
@@ -1420,7 +1420,7 @@ dependencies = [
 
 [[package]]
 name = "gorm-generate-core"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
