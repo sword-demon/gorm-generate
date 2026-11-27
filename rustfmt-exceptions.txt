@@ -6,7 +6,6 @@ crates/core/src/generate/tests.rs
 crates/core/src/parser.rs
 crates/core/src/render.rs
 crates/core/src/resolve.rs
-crates/core/src/types.rs
 crates/core/src/validate.rs
 crates/core/tests/compile.rs
 crates/core/tests/review_regressions.rs

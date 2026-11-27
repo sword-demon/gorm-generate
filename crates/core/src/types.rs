@@ -48,7 +48,11 @@ pub fn map_type(
         ) => "string",
         ("date" | "time" | "timestamp" | "datetime" | "year", _, _) => "time.Time",
         ("json", _, _) => "json.RawMessage",
-        ("blob" | "tinyblob" | "mediumblob" | "longblob" | "binary" | "varbinary" | "bytea", _, _) => "[]byte",
+        (
+            "blob" | "tinyblob" | "mediumblob" | "longblob" | "binary" | "varbinary" | "bytea",
+            _,
+            _,
+        ) => "[]byte",
         ("uuid", _, _) => "string",
         ("number", _, _) => "string",
         _ => {
@@ -84,7 +88,10 @@ pub fn map_type(
 /// Handles both MySQL and PostgreSQL `DataType` variants.
 pub fn classify_mysql_type(data_type: &DataType) -> (String, bool, Option<u64>) {
     match data_type {
-        DataType::Zerofill(inner) => { let (base, _, width) = classify_mysql_type(inner); (base, true, width) }
+        DataType::Zerofill(inner) => {
+            let (base, _, width) = classify_mysql_type(inner);
+            (base, true, width)
+        }
         DataType::Bit(_) | DataType::VarBit(_) => ("binary".into(), false, None),
         DataType::TinyInt(w) => ("tinyint".into(), false, *w),
         DataType::TinyIntUnsigned(w) => ("tinyint".into(), true, *w),
@@ -101,21 +108,28 @@ pub fn classify_mysql_type(data_type: &DataType) -> (String, bool, Option<u64>) 
         DataType::Decimal(_) | DataType::Dec(_) => ("decimal".into(), false, None),
         DataType::DecimalUnsigned(_) | DataType::DecUnsigned(_) => ("decimal".into(), true, None),
         DataType::Numeric(_) | DataType::BigNumeric(_) => ("numeric".into(), false, None),
-        DataType::Float(_) | DataType::FloatUnsigned(_) | DataType::Float4 => ("float".into(), false, None),
+        DataType::Float(_) | DataType::FloatUnsigned(_) | DataType::Float4 => {
+            ("float".into(), false, None)
+        }
         // MySQL `REAL` is a DOUBLE synonym unless REAL_AS_FLOAT is set; PG REAL
         // is 4-byte but widening to float64 is lossless, so map to double.
-        DataType::Real | DataType::Float8 | DataType::Double(_) | DataType::DoubleUnsigned(_) | DataType::DoublePrecision => {
-            ("double".into(), false, None)
-        }
+        DataType::Real
+        | DataType::Float8
+        | DataType::Double(_)
+        | DataType::DoubleUnsigned(_)
+        | DataType::DoublePrecision => ("double".into(), false, None),
         DataType::Boolean | DataType::Bool => ("bool".into(), false, None),
-        DataType::Varchar(_) | DataType::CharacterVarying(_) | DataType::CharVarying(_) | DataType::Nvarchar(_) => {
-            ("varchar".into(), false, None)
-        }
+        DataType::Varchar(_)
+        | DataType::CharacterVarying(_)
+        | DataType::CharVarying(_)
+        | DataType::Nvarchar(_) => ("varchar".into(), false, None),
         DataType::Char(_) | DataType::Character(_) => ("char".into(), false, None),
         DataType::Text | DataType::TinyText | DataType::MediumText | DataType::LongText => {
             ("text".into(), false, None)
         }
-        DataType::Varbinary(_) | DataType::Binary(_) | DataType::Bytea => ("binary".into(), false, None),
+        DataType::Varbinary(_) | DataType::Binary(_) | DataType::Bytea => {
+            ("binary".into(), false, None)
+        }
         DataType::Blob(_) | DataType::TinyBlob | DataType::MediumBlob | DataType::LongBlob => {
             ("blob".into(), false, None)
         }
