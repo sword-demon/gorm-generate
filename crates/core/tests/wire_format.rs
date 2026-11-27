@@ -3,7 +3,7 @@
 //! so removing the payload mirrors cannot silently change the contract.
 #![cfg(feature = "serde")]
 
-use gorm_generate_core::{generate, Dialect, ExportError, GeneratedFile, GenerateRequest};
+use gorm_generate_core::{generate, Dialect, ExportError, GenerateRequest, GeneratedFile};
 
 fn request(ddl: &str) -> GenerateRequest {
     GenerateRequest {
@@ -88,24 +88,35 @@ fn errors_serialize_as_a_tagged_union() {
 fn export_errors_serialize_as_a_tagged_union() {
     let cases = [
         (
-            ExportError::UnsafePath { path: "../x.go".into() },
+            ExportError::UnsafePath {
+                path: "../x.go".into(),
+            },
             serde_json::json!({"kind": "unsafePath", "path": "../x.go"}),
         ),
         (
-            ExportError::DuplicatePath { path: "internal/model/user.go".into() },
+            ExportError::DuplicatePath {
+                path: "internal/model/user.go".into(),
+            },
             serde_json::json!({"kind": "duplicatePath", "path": "internal/model/user.go"}),
         ),
         (
-            ExportError::Conflicts { paths: vec!["a.go".into(), "b.go".into()] },
+            ExportError::Conflicts {
+                paths: vec!["a.go".into(), "b.go".into()],
+            },
             serde_json::json!({"kind": "conflicts", "paths": ["a.go", "b.go"]}),
         ),
         (
-            ExportError::Io { message: "/x: permission denied".into() },
+            ExportError::Io {
+                message: "/x: permission denied".into(),
+            },
             serde_json::json!({"kind": "io", "message": "/x: permission denied"}),
         ),
     ];
     for (error, expected) in cases {
-        assert_eq!(serde_json::to_value(error).expect("error serializes"), expected);
+        assert_eq!(
+            serde_json::to_value(error).expect("error serializes"),
+            expected
+        );
     }
 }
 
@@ -115,7 +126,9 @@ fn generated_file_round_trips_through_the_exporter_payload() {
         "CREATE TABLE users (id BIGINT PRIMARY KEY, name TEXT NOT NULL);",
     ))
     .expect("should generate");
-    let file = project.file("users", gorm_generate_core::FileKind::Model).expect("model");
+    let file = project
+        .file("users", gorm_generate_core::FileKind::Model)
+        .expect("model");
 
     let json = serde_json::to_string(file).expect("file serializes");
     let back: GeneratedFile = serde_json::from_str(&json).expect("file deserializes");

@@ -9,4 +9,3 @@ crates/core/src/resolve.rs
 crates/core/src/validate.rs
 crates/core/tests/compile.rs
 crates/core/tests/review_regressions.rs
-crates/core/tests/wire_format.rs
