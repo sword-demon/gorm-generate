@@ -65,9 +65,9 @@ impl<'a> Contract<'a> {
         match method {
             Method::Create => format!("Create(ctx context.Context, m *{s}) error"),
             Method::GetByID => format!("GetByID({}) (*{s}, error)", self.get_params),
-            Method::List => format!(
-                "List(ctx context.Context, page int, pageSize int) ([]*{s}, int64, error)"
-            ),
+            Method::List => {
+                format!("List(ctx context.Context, page int, pageSize int) ([]*{s}, int64, error)")
+            }
             Method::Update => format!("Update(ctx context.Context, m *{s}) error"),
             Method::Delete => format!("Delete({}) error", self.get_params),
         }
@@ -122,7 +122,11 @@ pub(crate) fn param_name(column: &str) -> String {
         out = field.to_lowercase();
     }
     match out.as_str() {
-        "break" | "default" | "func" | "interface" | "select" | "case" | "defer" | "go" | "map" | "struct" | "chan" | "else" | "goto" | "package" | "switch" | "const" | "fallthrough" | "if" | "range" | "type" | "continue" | "for" | "import" | "return" | "var" | "ctx" | "r" | "s" | "c" | "m" | "err" | "key" | "data" | "dbErr" | "encoded" | "fmt" | "time" | "json" | "model" | "repository" | "redis" | "context" => format!("{out}PK"),
+        "break" | "default" | "func" | "interface" | "select" | "case" | "defer" | "go" | "map"
+        | "struct" | "chan" | "else" | "goto" | "package" | "switch" | "const" | "fallthrough"
+        | "if" | "range" | "type" | "continue" | "for" | "import" | "return" | "var" | "ctx"
+        | "r" | "s" | "c" | "m" | "err" | "key" | "data" | "dbErr" | "encoded" | "fmt" | "time"
+        | "json" | "model" | "repository" | "redis" | "context" => format!("{out}PK"),
         _ => out,
     }
 }

@@ -30,9 +30,16 @@ pub fn snake_case(name: &str) -> String {
 fn singularize(word: &str) -> String {
     if word.len() > 4 && word.ends_with("ies") {
         format!("{}y", &word[..word.len() - 3])
-    } else if ["sses", "xes", "zes", "ches", "shes", "statuses"].iter().any(|suffix| word.ends_with(suffix)) {
+    } else if ["sses", "xes", "zes", "ches", "shes", "statuses"]
+        .iter()
+        .any(|suffix| word.ends_with(suffix))
+    {
         word[..word.len() - 2].to_string()
-    } else if word.len() > 3 && word.ends_with('s') && !word.ends_with("ss") && !word.ends_with("us") {
+    } else if word.len() > 3
+        && word.ends_with('s')
+        && !word.ends_with("ss")
+        && !word.ends_with("us")
+    {
         word[..word.len() - 1].to_string()
     } else {
         word.to_string()
