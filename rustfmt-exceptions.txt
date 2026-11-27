@@ -2,5 +2,4 @@
 # .rs file except these. The list may only shrink: fix a file, drop its line in
 # the same commit. A listed file that is already clean fails the gate.
 crates/core/src/generate/tests.rs
-crates/core/src/parser.rs
 crates/core/tests/review_regressions.rs
