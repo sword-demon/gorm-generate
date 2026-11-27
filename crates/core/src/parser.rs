@@ -1,8 +1,6 @@
 //! DDL script parsing: extracts table definitions via sqlparser.
 
-use sqlparser::ast::{
-    ColumnDef, ColumnOption, CreateTable, DataType, Statement, TableConstraint,
-};
+use sqlparser::ast::{ColumnDef, ColumnOption, CreateTable, DataType, Statement, TableConstraint};
 use sqlparser::dialect::{MySqlDialect, PostgreSqlDialect};
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, Tokenizer};
@@ -42,12 +40,19 @@ pub fn parse_ddl(ddl: &str, dialect: Dialect) -> Result<ParsedScript, GenerateEr
 /// written in the other dialect: say so, instead of leaving the user with a
 /// raw parser error about syntax the dialect never accepted.
 fn diagnose_mismatch(ddl: &str, dialect: Dialect, error: GenerateError) -> GenerateError {
-    let GenerateError::Parse { statement_index, snippet } = error else {
+    let GenerateError::Parse {
+        statement_index,
+        snippet,
+    } = error
+    else {
         return error;
     };
     let other = dialect.other();
     if parse_with_dialect(ddl, other).is_err() {
-        return GenerateError::Parse { statement_index, snippet };
+        return GenerateError::Parse {
+            statement_index,
+            snippet,
+        };
     }
     GenerateError::DialectMismatch {
         statement_index,
@@ -83,7 +88,9 @@ fn parse_with_dialect(ddl: &str, dialect: Dialect) -> Result<ParsedScript, Gener
     let mut statements = Vec::new();
     loop {
         while parser.consume_token(&Token::SemiColon) {}
-        if parser.peek_token().token == Token::EOF { break; }
+        if parser.peek_token().token == Token::EOF {
+            break;
+        }
         let start = parser.peek_token().span.start;
         let statement = parser.parse_statement().map_err(|e| GenerateError::Parse {
             statement_index: statements.len() + 1,
@@ -112,25 +119,37 @@ fn parse_with_dialect(ddl: &str, dialect: Dialect) -> Result<ParsedScript, Gener
                 constraints,
                 ..
             }) => {
-                let table_name = name.0.last().and_then(|p| match p {
-                    sqlparser::ast::ObjectNamePart::Identifier(i) => Some(if dialect == Dialect::MySql { i.value.clone() } else { identifier_key(i, dialect) }),
-                    _ => None,
-                }).unwrap_or_default();
+                let table_name = name
+                    .0
+                    .last()
+                    .and_then(|p| match p {
+                        sqlparser::ast::ObjectNamePart::Identifier(i) => {
+                            Some(if dialect == Dialect::MySql {
+                                i.value.clone()
+                            } else {
+                                identifier_key(i, dialect)
+                            })
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_default();
                 let mut normalized_columns = columns.clone();
                 for col in &mut normalized_columns {
-                    if dialect == Dialect::PostgreSql { col.name.value = identifier_key(&col.name, dialect); }
+                    if dialect == Dialect::PostgreSql {
+                        col.name.value = identifier_key(&col.name, dialect);
+                    }
                 }
                 let primary_key = extract_primary_key(&normalized_columns, constraints, dialect)?;
                 // MySQL table COMMENT='...' lands in table_options (Plain or
                 // With), not the Hive-only `comment` field.
                 let table_comment = match table_options {
                     sqlparser::ast::CreateTableOptions::Plain(options)
-                    | sqlparser::ast::CreateTableOptions::With(options) => options.iter().find_map(
-                        |opt| match opt {
+                    | sqlparser::ast::CreateTableOptions::With(options) => {
+                        options.iter().find_map(|opt| match opt {
                             sqlparser::ast::SqlOption::Comment(def) => Some(comment_text(def)),
                             _ => None,
-                        },
-                    ),
+                        })
+                    }
                     _ => None,
                 };
                 tables.push(ParsedTable {
@@ -148,8 +167,20 @@ fn parse_with_dialect(ddl: &str, dialect: Dialect) -> Result<ParsedScript, Gener
     }
     // Comments may precede CREATE TABLE in an input script.
     for statement in &statements {
-        if let Statement::Comment { object_type, object_name, comment, .. } = statement {
-            apply_comment(&mut tables, *object_type, object_name, comment.as_deref(), dialect);
+        if let Statement::Comment {
+            object_type,
+            object_name,
+            comment,
+            ..
+        } = statement
+        {
+            apply_comment(
+                &mut tables,
+                *object_type,
+                object_name,
+                comment.as_deref(),
+                dialect,
+            );
         }
     }
     let mut warnings = Vec::new();
@@ -180,24 +211,30 @@ fn apply_comment(
     let parts = &object_name.0;
     let column_object = object_type == sqlparser::ast::CommentObject::Column;
     let table_index = parts.len().checked_sub(if column_object { 2 } else { 1 });
-    let Some(sqlparser::ast::ObjectNamePart::Identifier(table_ident)) = table_index.and_then(|i| parts.get(i)) else { return };
+    let Some(sqlparser::ast::ObjectNamePart::Identifier(table_ident)) =
+        table_index.and_then(|i| parts.get(i))
+    else {
+        return;
+    };
     let table_name = identifier_key(table_ident, dialect);
     let column_name = if column_object {
         match parts.last() {
-            Some(sqlparser::ast::ObjectNamePart::Identifier(ident)) => Some(identifier_key(ident, dialect)),
+            Some(sqlparser::ast::ObjectNamePart::Identifier(ident)) => {
+                Some(identifier_key(ident, dialect))
+            }
             _ => None,
         }
-    } else { None };
-    let Some(table) = tables.iter_mut().find(|t| t.name == table_name) else { return };
+    } else {
+        None
+    };
+    let Some(table) = tables.iter_mut().find(|t| t.name == table_name) else {
+        return;
+    };
 
     match (object_type, column_name) {
         (sqlparser::ast::CommentObject::Table, _) => table.comment = Some(comment.to_string()),
         (sqlparser::ast::CommentObject::Column, Some(col)) => {
-            if let Some(found) = table
-                .columns
-                .iter_mut()
-                .find(|c| c.name.value == col)
-            {
+            if let Some(found) = table.columns.iter_mut().find(|c| c.name.value == col) {
                 // PG semantics are last-write-wins: replace an existing
                 // comment instead of appending a second one.
                 match found
@@ -267,20 +304,47 @@ pub fn identifier_key(ident: &sqlparser::ast::Ident, dialect: Dialect) -> String
     }
 }
 
-fn extract_primary_key(columns: &[ColumnDef], constraints: &[TableConstraint], dialect: Dialect) -> Result<Vec<String>, GenerateError> {
-    let inline: Vec<_> = columns.iter().filter(|col| col.options.iter().any(|opt| matches!(opt.option, ColumnOption::PrimaryKey(_)))).map(|col| col.name.value.clone()).collect();
-    if !inline.is_empty() { return Ok(inline); }
+fn extract_primary_key(
+    columns: &[ColumnDef],
+    constraints: &[TableConstraint],
+    dialect: Dialect,
+) -> Result<Vec<String>, GenerateError> {
+    let inline: Vec<_> = columns
+        .iter()
+        .filter(|col| {
+            col.options
+                .iter()
+                .any(|opt| matches!(opt.option, ColumnOption::PrimaryKey(_)))
+        })
+        .map(|col| col.name.value.clone())
+        .collect();
+    if !inline.is_empty() {
+        return Ok(inline);
+    }
     for constraint in constraints {
         if let TableConstraint::PrimaryKey(pk) = constraint {
-            return pk.columns.iter().map(|c| {
-                let key = match &c.column.expr {
-                    sqlparser::ast::Expr::Identifier(ident) => identifier_key(ident, dialect),
-                    _ => return Err(GenerateError::Validation { message: "unsupported primary key expression or prefix index".into() }),
-                };
-                columns.iter().find(|c| identifier_key(&c.name, dialect) == key).map(|c| c.name.value.clone()).ok_or_else(|| GenerateError::Validation {
-                    message: format!("primary key column `{key}` does not exist"),
+            return pk
+                .columns
+                .iter()
+                .map(|c| {
+                    let key = match &c.column.expr {
+                        sqlparser::ast::Expr::Identifier(ident) => identifier_key(ident, dialect),
+                        _ => {
+                            return Err(GenerateError::Validation {
+                                message: "unsupported primary key expression or prefix index"
+                                    .into(),
+                            })
+                        }
+                    };
+                    columns
+                        .iter()
+                        .find(|c| identifier_key(&c.name, dialect) == key)
+                        .map(|c| c.name.value.clone())
+                        .ok_or_else(|| GenerateError::Validation {
+                            message: format!("primary key column `{key}` does not exist"),
+                        })
                 })
-            }).collect();
+                .collect();
         }
     }
     Ok(Vec::new())
@@ -302,7 +366,10 @@ pub fn is_identity(col: &ColumnDef) -> bool {
     col.options.iter().any(|opt| {
         matches!(
             &opt.option,
-            sqlparser::ast::ColumnOption::Generated { generation_expr: None, .. }
+            sqlparser::ast::ColumnOption::Generated {
+                generation_expr: None,
+                ..
+            }
         )
     })
 }
@@ -326,7 +393,15 @@ pub(crate) fn ident_value(part: &sqlparser::ast::ObjectNamePart) -> String {
 }
 
 pub fn is_generated_expression(col: &ColumnDef) -> bool {
-    col.options.iter().any(|opt| matches!(&opt.option, ColumnOption::Generated { generation_expr: Some(_), .. }))
+    col.options.iter().any(|opt| {
+        matches!(
+            &opt.option,
+            ColumnOption::Generated {
+                generation_expr: Some(_),
+                ..
+            }
+        )
+    })
 }
 
 /// Maps a tokenizer failure to the statement it occurred in.
@@ -360,7 +435,9 @@ fn source_line(ddl: &str, line: u64) -> Option<String> {
     if line == 0 {
         return None;
     }
-    ddl.lines().nth(line as usize - 1).map(|text| text.chars().take(500).collect())
+    ddl.lines()
+        .nth(line as usize - 1)
+        .map(|text| text.chars().take(500).collect())
 }
 
 #[cfg(test)]
@@ -377,7 +454,9 @@ mod tests {
     /// Narrowing helpers: these tests assert the parse variant's fields.
     fn statement_index(error: &GenerateError) -> usize {
         match error {
-            GenerateError::Parse { statement_index, .. } => *statement_index,
+            GenerateError::Parse {
+                statement_index, ..
+            } => *statement_index,
             other => panic!("expected a parse error, got {other:?}"),
         }
     }
@@ -425,6 +504,10 @@ mod tests {
             Dialect::MySql,
         );
         assert!(snippet(&e).contains("Line: 2"), "snippet: {}", snippet(&e));
-        assert!(snippet(&e).contains("CREATE TABLE b"), "snippet: {}", snippet(&e));
+        assert!(
+            snippet(&e).contains("CREATE TABLE b"),
+            "snippet: {}",
+            snippet(&e)
+        );
     }
 }
