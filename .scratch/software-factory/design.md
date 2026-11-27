@@ -146,7 +146,7 @@
 
 第一次 retro（F）也做了：从 #20–#22 沉淀两条教训到 `tasks/lessons.md`（第二个测试运行器要先划收集边界；抽取共享守卫时区分「输出兼容」与「把旧缺陷搬过去」），并把浏览器 E2E 的 IPC 打桩法记进 `docs/solutions/testing/tauri-browser-e2e.md`。
 
-外部报障入口已落地：`.github/ISSUE_TEMPLATE/` 的 bug / feature 表单（bug 强制版本、方言、缓存开关与已脱敏的最小 DDL）、README「报告问题」、应用内标题栏的问号按钮（经 `tauri-plugin-opener` 用系统浏览器打开预填 URL；只预填版本、方言、缓存，不预填 DDL）。D triage 的前提已满足，等第一个真实报障。
+外部报障入口已落地：`.github/ISSUE_TEMPLATE/` 的 bug / feature 表单（bug 强制版本、方言、缓存开关与已脱敏的最小 DDL）、README「报告问题」、应用内标题栏的问号按钮（经 `tauri-plugin-opener` 用系统浏览器打开预填 URL；只预填版本、方言、缓存，不预填 DDL）。D triage 的前提已满足，等第一个真实报障。真机 `.app` 冒烟（2026-11-27）确认：问号按钮先弹出公开性确认，确认后系统浏览器打开预填版本、方言与缓存开关的 bug 表单。
 
 ## 6. 待拍板
 

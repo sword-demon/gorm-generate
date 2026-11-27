@@ -36,6 +36,7 @@
 未验证:
 
 - **GUI 手动冒烟已完成(2026-11-26)**:用 Screen Recording / 辅助功能权限驱动本地构建的 `.app`。已验证:窗口渲染、Generate 真的生成了 4 个文件(model / repository / service / cache)、文件树、Go 高亮预览、配置表单(修改选项生效)、SQL 与结果分隔条拖动、单条依赖复制、Copy all、Export to directory,以及底部依赖行(`gorm.io/gorm`、`github.com/redis/go-redis/v9`)。用户确认上述真实交互全部成功。
+- **报障入口冒烟(2026-11-27)**:release `.app`(含 PR #24)点标题栏问号,先弹出公开性确认,确认后系统浏览器打开预填版本、方言与缓存开关的 GitHub bug 表单;用户确认成功。取消分支未在真机点过(单测覆盖)。
 - CI 的 `pull_request` 触发已随 PR #4 与 #5 真实走过(两者的 CI 都绿)。
 - "故意改坏模板验证 CI 变红"没有做(ticket 15 已注明)。
 
