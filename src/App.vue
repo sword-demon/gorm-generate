@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
 
+import { confirm } from "@tauri-apps/plugin-dialog"
+import { openUrl } from "@tauri-apps/plugin-opener"
+
 import CodePreview from "@/components/CodePreview.vue"
 import ConfigDialog from "@/components/ConfigDialog.vue"
 import SqlEditor from "@/components/SqlEditor.vue"
@@ -10,6 +13,8 @@ import { useExport } from "@/composables/useExport"
 import { usePaneSplit, MAX_PANE_PERCENT, MIN_PANE_PERCENT } from "@/composables/usePaneSplit"
 import { useProject } from "@/composables/useProject"
 import { useSettings } from "@/composables/useSettings"
+import { buildBugReportUrl } from "@/lib/report"
+import { dialectLabel } from "@/lib/settings"
 
 const settings = useSettings()
 // Generate is blocked while an export is writing. The flag lives in the export
@@ -51,9 +56,33 @@ const { copied, copyError, copy } = copier
 
 // The settings live in a dialog; the header only shows what they currently are.
 const configOpen = ref(false)
+const reportError = ref("")
+
+// Bug reports are public: ask before sending anyone to the form, so pasting
+// DDL is a deliberate choice (design §6 item 3).
+const PUBLIC_REPORT_WARNING =
+  "Bug reports are public. Remove table names and business details from the DDL before you paste it."
+
+// Opens the prefilled bug form in the system browser. Only what the app knows
+// is prefilled; the reporter decides what DDL (if any) to paste.
+async function reportIssue() {
+  try {
+    if (!(await confirm(PUBLIC_REPORT_WARNING))) return
+    await openUrl(
+      buildBugReportUrl({
+        version: __APP_VERSION__,
+        dialect: dialect.value,
+        cacheEnabled: cacheEnabled.value,
+      }),
+    )
+    reportError.value = ""
+  } catch (cause) {
+    reportError.value = `Could not open the issue page: ${String(cause)}`
+  }
+}
 const configSummary = computed(() => {
   const parts = [
-    dialect.value === "postgres" ? "PostgreSQL" : "MySQL",
+    dialectLabel(dialect.value),
     modulePath.value || "no module path",
   ]
   if (tinyintAsBool.value) parts.push("tinyint(1) as bool")
@@ -108,6 +137,29 @@ function generate() {
       <p class="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground md:block">
         {{ configSummary }}
       </p>
+      <Button
+        class="shrink-0"
+        variant="ghost"
+        size="icon"
+        aria-label="Report an issue"
+        title="Report an issue"
+        @click="reportIssue"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+          <path d="M12 17h.01" />
+        </svg>
+      </Button>
       <Button class="shrink-0" :disabled="pending || exporting" @click="generate">
         {{ pending ? "Generating..." : "Generate" }}
       </Button>
@@ -145,8 +197,12 @@ function generate() {
       v-model:cache-ttl-seconds="cacheTtlSeconds"
     />
 
-    <div v-if="persistenceError || copyError" role="alert" class="px-3 py-2 text-sm text-destructive">
-      {{ persistenceError || copyError }}
+    <div
+      v-if="persistenceError || copyError || reportError"
+      role="alert"
+      class="px-3 py-2 text-sm text-destructive"
+    >
+      {{ persistenceError || copyError || reportError }}
     </div>
     <div ref="splitContainer" class="flex min-h-0 flex-1">
       <section

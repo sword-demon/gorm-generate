@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   defaults,
+  dialectLabel,
   loadState,
   MAX_PANE_PERCENT,
   MIN_PANE_PERCENT,
@@ -88,6 +89,13 @@ describe("loadState", () => {
   it("keeps a stored script the user wrote", () => {
     const ddl = "CREATE TABLE users (id BIGINT PRIMARY KEY);"
     expect(loadState(JSON.stringify({ ddl, dialect: "postgres" })).ddl).toBe(ddl)
+  })
+})
+
+describe("dialectLabel", () => {
+  it("matches the labels the UI and the bug form use", () => {
+    expect(dialectLabel("mysql")).toBe("MySQL")
+    expect(dialectLabel("postgres")).toBe("PostgreSQL")
   })
 })
 

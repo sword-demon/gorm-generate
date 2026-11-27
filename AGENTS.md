@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live as markdown files under `.scratch/<feature>/` (local tracker). See `docs/agents/issue-tracker.md`.
+Public bug reports and feature requests live in GitHub Issues, with issue forms under `.github/ISSUE_TEMPLATE/`. Design-time tickets stay as markdown files under `.scratch/<feature>/` (local tracker). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

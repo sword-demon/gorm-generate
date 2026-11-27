@@ -35,12 +35,27 @@ interface StubOptions {
   failure?: unknown
 }
 
+interface Invocation {
+  cmd: string
+  args?: Record<string, unknown>
+}
+
 async function stubTauri(page: Page, options: StubOptions = {}) {
   await page.addInitScript(
     ({ result, failure }) => {
+      const calls: Invocation[] = []
+      ;(window as unknown as { __E2E_INVOCATIONS__: Invocation[] }).__E2E_INVOCATIONS__ =
+        calls
       const w = window as unknown as { __TAURI_INTERNALS__: unknown }
       w.__TAURI_INTERNALS__ = {
-        invoke: async (cmd: string) => {
+        invoke: async (cmd: string, args?: Record<string, unknown>) => {
+          calls.push({ cmd, args })
+          // The report entry confirms the public-report warning (`confirm`
+          // goes through the dialog plugin's message command) and asks the
+          // system browser to open a URL; the E2E records the call and the
+          // URL it carried.
+          if (cmd === "plugin:dialog|message") return "Ok"
+          if (cmd === "plugin:opener|open_url") return null
           if (cmd !== "generate_project") {
             throw new Error(`unexpected Tauri command: ${cmd}`)
           }
@@ -50,6 +65,12 @@ async function stubTauri(page: Page, options: StubOptions = {}) {
       }
     },
     { result: project, failure: options.failure ?? null },
+  )
+}
+
+function invocations(page: Page): Promise<Invocation[]> {
+  return page.evaluate(
+    () => (window as unknown as { __E2E_INVOCATIONS__: Invocation[] }).__E2E_INVOCATIONS__,
   )
 }
 
@@ -92,6 +113,24 @@ test("settings survive a reload", async ({ page }) => {
 
   await page.reload()
   await expect(page.getByText("MySQL · example.com/e2e")).toBeVisible()
+})
+
+test("the report entry opens the prefilled bug form", async ({ page }) => {
+  await stubTauri(page)
+  await page.goto("/")
+
+  await page.getByRole("button", { name: "Report an issue" }).click()
+
+  const opener = (await invocations(page)).find(
+    (call) => call.cmd === "plugin:opener|open_url",
+  )
+  expect(opener).toBeDefined()
+  const url = new URL(String(opener?.args?.url))
+  expect(url.searchParams.get("template")).toBe("bug_report.yml")
+  expect(url.searchParams.get("title")).toBe("[bug] ")
+  expect(url.searchParams.get("dialect")).toBe("MySQL")
+  expect(url.searchParams.get("cache")).toBe("关闭")
+  expect(url.searchParams.get("version")).toMatch(/^\d+\.\d+\.\d+$/)
 })
 
 test("a dialect mismatch is reported as such, not as a parser error", async ({ page }) => {

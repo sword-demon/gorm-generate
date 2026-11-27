@@ -8,6 +8,8 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { invoke } from "@tauri-apps/api/core"
+import { confirm } from "@tauri-apps/plugin-dialog"
+import { openUrl } from "@tauri-apps/plugin-opener"
 
 import App from "./App.vue"
 import type { GeneratedProject } from "@/lib/ipc"
@@ -15,8 +17,11 @@ import { defaults, STORAGE_KEY } from "@/lib/settings"
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }))
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }))
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }))
 
 const mockedInvoke = vi.mocked(invoke)
+const mockedConfirm = vi.mocked(confirm)
+const mockedOpenUrl = vi.mocked(openUrl)
 
 const project: GeneratedProject = {
   tables: ["users", "orders"],
@@ -100,6 +105,8 @@ async function generate() {
 beforeEach(() => {
   localStorage.clear()
   mockedInvoke.mockReset()
+  mockedConfirm.mockReset()
+  mockedOpenUrl.mockReset()
 })
 
 afterEach(() => {
@@ -243,6 +250,46 @@ describe("App", () => {
 
     expect(dialog().exists()).toBe(true)
     expect(dialog().find("select").element).toHaveProperty("value", "mysql")
+  })
+
+  it("warns that reports are public before opening the prefilled form", async () => {
+    mockedConfirm.mockResolvedValue(true)
+    mockedOpenUrl.mockResolvedValue(undefined)
+    mountApp()
+
+    await wrapper.find('button[aria-label="Report an issue"]').trigger("click")
+    await flushPromises()
+
+    expect(mockedConfirm).toHaveBeenCalledWith(expect.stringContaining("Bug reports are public"))
+    expect(mockedOpenUrl).toHaveBeenCalledTimes(1)
+    const url = new URL(mockedOpenUrl.mock.calls[0][0])
+    expect(url.searchParams.get("template")).toBe("bug_report.yml")
+    expect(url.searchParams.get("title")).toBe("[bug] ")
+    expect(url.searchParams.get("version")).toBe(__APP_VERSION__)
+    expect(url.searchParams.get("dialect")).toBe("MySQL")
+  })
+
+  it("does not open anything when the public-report warning is declined", async () => {
+    mockedConfirm.mockResolvedValue(false)
+    mountApp()
+
+    await wrapper.find('button[aria-label="Report an issue"]').trigger("click")
+    await flushPromises()
+
+    expect(mockedOpenUrl).not.toHaveBeenCalled()
+  })
+
+  it("reports a browser-open failure in the error line", async () => {
+    mockedConfirm.mockResolvedValue(true)
+    mockedOpenUrl.mockRejectedValue(new Error("not allowed"))
+    mountApp()
+
+    await wrapper.find('button[aria-label="Report an issue"]').trigger("click")
+    await flushPromises()
+
+    expect(wrapper.find('[role="alert"]').text()).toContain(
+      "Could not open the issue page: Error: not allowed",
+    )
   })
 
   it("generates with the settings edited in the configuration form", async () => {

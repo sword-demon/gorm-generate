@@ -12,6 +12,7 @@ tauri = { version = "2.12", features = [] }
 serde = { version = "1", features = ["derive"] }
 gorm-generate-core = { path = "../crates/core", features = ["serde"] }
 tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
 
 [dev-dependencies]
 serde_json = "1"
