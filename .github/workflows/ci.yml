@@ -49,11 +49,10 @@ jobs:
           rustup toolchain install 1.90.0 --profile minimal --component clippy --component rustfmt
           rustup default 1.90.0
 
-      # Ratchet, not a full gate: files still on rustfmt-exceptions.txt are
-      # exempt, everything else must be rustfmt-clean, and a listed file that
-      # is already clean fails so the list can only shrink. See design.md §7.
-      - name: rustfmt gate (non-exempt files)
-        run: ./scripts/fmt-gate.sh
+      # The fmt ratchet finished (design.md §7): every file is clean, so the
+      # gate is the plain full-workspace check.
+      - name: cargo fmt --all --check
+        run: cargo fmt --all --check
 
       # Source cache only: no target/ cache, so stale artifacts can never mask
       # a compile error.

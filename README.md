@@ -142,7 +142,7 @@ tag 必须与 `Cargo.toml` 的版本一致,否则 workflow 在构建前就会失
 
 ## 本地开发提示
 
-- 格式是渐进式的（ratchet）：`scripts/fmt-gate.sh` 只检查不在 `rustfmt-exceptions.txt` 里的文件，清单只缩不增 —— 修好一个文件就连同它的那一行一起提交。CI 的 `core` job 会跑这个脚本；`cargo fmt --check` 全仓仍不通过，在清单清空之前都不会变成门禁。
+- `cargo fmt --all --check` 是门禁，CI 的 `core` job 会跑。仓库已全仓格式化（2026-11-27 用 ratchet 逐文件收尾，见 `.scratch/software-factory/design.md` §7）。
 - macOS 沙箱里 cargo 若报 `Operation not permitted`（target 目录或 sccache），用：
 
   ```bash
