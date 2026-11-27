@@ -24,10 +24,30 @@ fn cases() -> Vec<Case> {
     let mysql = include_str!("../src/fixtures/sample_mysql_ddl.sql");
     let pg = include_str!("../src/fixtures/sample_pg_ddl.sql");
     vec![
-        Case { name: "mysql_cache_off", ddl: mysql, dialect: Dialect::MySql, cache_enabled: false },
-        Case { name: "mysql_cache_on", ddl: mysql, dialect: Dialect::MySql, cache_enabled: true },
-        Case { name: "pg_cache_off", ddl: pg, dialect: Dialect::PostgreSql, cache_enabled: false },
-        Case { name: "pg_cache_on", ddl: pg, dialect: Dialect::PostgreSql, cache_enabled: true },
+        Case {
+            name: "mysql_cache_off",
+            ddl: mysql,
+            dialect: Dialect::MySql,
+            cache_enabled: false,
+        },
+        Case {
+            name: "mysql_cache_on",
+            ddl: mysql,
+            dialect: Dialect::MySql,
+            cache_enabled: true,
+        },
+        Case {
+            name: "pg_cache_off",
+            ddl: pg,
+            dialect: Dialect::PostgreSql,
+            cache_enabled: false,
+        },
+        Case {
+            name: "pg_cache_on",
+            ddl: pg,
+            dialect: Dialect::PostgreSql,
+            cache_enabled: true,
+        },
     ]
 }
 
@@ -75,9 +95,18 @@ fn write_project(dir: &Path, case: &Case) {
     // idempotent, so require the expected layers to exist.
     let paths: Vec<&str> = project.files.iter().map(|f| f.path.as_str()).collect();
     assert!(!paths.is_empty(), "generate produced no files");
-    assert!(paths.iter().any(|p| p.starts_with("internal/model/")), "missing model file: {paths:?}");
-    assert!(paths.iter().any(|p| p.ends_with("_repo.go")), "missing repository file: {paths:?}");
-    assert!(paths.iter().any(|p| p.ends_with("_service.go")), "missing service file: {paths:?}");
+    assert!(
+        paths.iter().any(|p| p.starts_with("internal/model/")),
+        "missing model file: {paths:?}"
+    );
+    assert!(
+        paths.iter().any(|p| p.ends_with("_repo.go")),
+        "missing repository file: {paths:?}"
+    );
+    assert!(
+        paths.iter().any(|p| p.ends_with("_service.go")),
+        "missing service file: {paths:?}"
+    );
     assert_eq!(
         paths.iter().any(|p| p.ends_with("_cache.go")),
         case.cache_enabled,
@@ -127,16 +156,24 @@ fn generated_code_compiles_across_matrix() {
 #[test]
 fn generation_is_idempotent_across_matrix() {
     for case in cases() {
-        let first = generate(&request(&case))
-            .unwrap_or_else(|_| panic!("[{}] first generate", case.name));
-        let second = generate(&request(&case))
-            .unwrap_or_else(|_| panic!("[{}] second generate", case.name));
+        let first =
+            generate(&request(&case)).unwrap_or_else(|_| panic!("[{}] first generate", case.name));
+        let second =
+            generate(&request(&case)).unwrap_or_else(|_| panic!("[{}] second generate", case.name));
 
         // Guard against a vacuous pass: empty == empty is trivially identical.
-        assert!(!first.files.is_empty(), "[{}] generated no files", case.name);
+        assert!(
+            !first.files.is_empty(),
+            "[{}] generated no files",
+            case.name
+        );
 
         let first_files: Vec<_> = first.files.iter().map(|f| (&f.path, &f.content)).collect();
         let second_files: Vec<_> = second.files.iter().map(|f| (&f.path, &f.content)).collect();
-        assert_eq!(first_files, second_files, "[{}] output not byte-identical", case.name);
+        assert_eq!(
+            first_files, second_files,
+            "[{}] output not byte-identical",
+            case.name
+        );
     }
 }
