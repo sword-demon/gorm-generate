@@ -124,9 +124,27 @@
 - **GUI 冒烟仍靠人**：Tauri 的导出链路（写盘、选择器权限）在 runner 上难以稳定复现，短中期保持人工，或另开一个 `tauri-driver` 原型 ticket。
 - **`.scratch/` 与 Issues 双轨**：过渡期需要明确「工作记录看 Issues，spec / ADR 看仓库」；否则两份状态会漂移。
 
+## 7. 优先级（2026-11-27）
+
+约束变了：GitHub Actions 里没有可用凭证，凡是「run 在 CI 上自动执行」的 task 都卡在前提之外；能立刻做的只有会话驱动的那部分。按此重排：
+
+| 优先级 | Task | 理由 | 前提 |
+| --- | --- | --- | --- |
+| P0 | **E Ratchet**，第一项 `cargo fmt` | 唯一不需要远程 orchestrator 的高价值任务：一次一个小 PR、人 review，把「现在不过的检查」变成门禁。 | 无 |
+| P0 | **A 的替代**：推送前在会话里跑 `/code-review` | 已定，补成固定习惯即可。 | 无 |
+| P1 | **F Retro**（1/10） | 成本低：`tasks/lessons.md` 是仓库最强的资产，让它在合并后自己长。会话里手动触发。 | 无 |
+| P1 | **D Explore / triage** | 目前没有外部 issue 流量，做了也没输入；等第一个真实报障再开。 | issue forms + README 入口 |
+| P2 | **B Implementer** | 无凭证时与「人开一个会话」没有区别，零增量。 | 先定 run 位置 + 凭证 |
+| P2 | **G Fix** | 已被 app 的 Auto-fix 覆盖（不占 Actions 配额、不需要凭证），单独再建是重复。 | 无 |
+| — | **C Rework** | 依赖 A，A 已取消，不要建。 | 依赖已死 |
+
+能改变 P2 的只有一个决定：run 在哪里、用什么凭证。三个选项成本递增：① 只做本地工厂（P2 永不做）；② 本机自托管 runner + 已有的 `claude` CLI 登录（不需要 API key，但 Mac 必须在线，且公开仓库必须拒绝 fork PR）；③ API key 或订阅 token（唯一能真正无人值守的路径）。
+
+建议：先做 P0 的 `fmt` ratchet，跑两周看人工 review 成本；收益未验证前不投 P2。
+
 ## 6. 待拍板
 
 1. Ticket tracker 切换到 GitHub Issues（本地 markdown 是否保留为工作区）？
 2. 是否接受 bot 以 App 身份 push 分支（这是 B/C 的前提）。
 3. 公开 issue 的隐私边界：用户贴的 DDL 会公开，应用内「报告问题」需要提示。
-4. 第一个落地物：A 的 workflow，还是先迁移 tracker？
+4. 第一个落地物：A 试过并已关闭（原因见顶部状态），当前从 E ratchet 开始，见 §7。
