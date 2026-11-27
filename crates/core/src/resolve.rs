@@ -127,9 +127,7 @@ pub(crate) fn resolve_table(table: &ParsedTable, tinyint_as_bool: bool) -> Table
             nullable,
             // MySQL AUTO_INCREMENT, the PG SERIAL family, or GENERATED AS
             // IDENTITY all mean auto-increment.
-            auto_increment: is_auto_increment(col)
-                || is_serial(&col.data_type)
-                || is_identity(col),
+            auto_increment: is_auto_increment(col) || is_serial(&col.data_type) || is_identity(col),
             generated: is_generated_expression(col),
             comment: parser::column_comment(col),
             needs_time,
@@ -225,9 +223,8 @@ mod tests {
         assert!(table.imports.gorm);
         assert!(!table.pk_imports().gorm);
 
-        let pk = resolve(
-            "CREATE TABLE `t` (`deleted_at` BIGINT NOT NULL, PRIMARY KEY (`deleted_at`));",
-        );
+        let pk =
+            resolve("CREATE TABLE `t` (`deleted_at` BIGINT NOT NULL, PRIMARY KEY (`deleted_at`));");
         assert_eq!(column(&pk, "deleted_at").go_type, "int64");
         assert!(!pk.imports.gorm);
     }
@@ -269,9 +266,8 @@ mod tests {
 
     #[test]
     fn names_are_derived_once_from_the_table_name() {
-        let table = resolve(
-            "CREATE TABLE `user_orders` (`id` BIGINT NOT NULL, PRIMARY KEY (`id`));",
-        );
+        let table =
+            resolve("CREATE TABLE `user_orders` (`id` BIGINT NOT NULL, PRIMARY KEY (`id`));");
         assert_eq!(table.struct_name, "UserOrder");
         assert_eq!(table.file_base, "user_order");
         assert_eq!(table.impl_type_base, "userorder");
