@@ -46,8 +46,14 @@ jobs:
       # of a third-party toolchain action.
       - name: Install Rust 1.90.0
         run: |
-          rustup toolchain install 1.90.0 --profile minimal --component clippy
+          rustup toolchain install 1.90.0 --profile minimal --component clippy --component rustfmt
           rustup default 1.90.0
+
+      # Ratchet, not a full gate: files still on rustfmt-exceptions.txt are
+      # exempt, everything else must be rustfmt-clean, and a listed file that
+      # is already clean fails so the list can only shrink. See design.md §7.
+      - name: rustfmt gate (non-exempt files)
+        run: ./scripts/fmt-gate.sh
 
       # Source cache only: no target/ cache, so stale artifacts can never mask
       # a compile error.
@@ -74,8 +80,7 @@ jobs:
           key: gomod-gorm-v1.31.2-redis-v9.7.0
 
       # Fails fast on lint drift; the 4 pre-existing golden-test warnings were
-      # cleaned up when this step landed. No fmt check: the repo is not
-      # rustfmt-formatted and a fmt gate would stay red.
+      # cleaned up when this step landed.
       - name: cargo clippy -D warnings
         run: cargo clippy -p gorm-generate-core --all-targets -- -D warnings
 

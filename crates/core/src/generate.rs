@@ -117,9 +117,7 @@ pub enum GenerateError {
         snippet: String,
     },
     /// The request or the generated identifiers violate a rule.
-    Validation {
-        message: String,
-    },
+    Validation { message: String },
 }
 
 /// Generates the layered Go project from a DDL script. No IO.
@@ -169,4 +167,3 @@ pub fn generate(request: &GenerateRequest) -> Result<GeneratedProject, GenerateE
         dependencies,
     })
 }
-
