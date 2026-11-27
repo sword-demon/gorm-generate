@@ -43,8 +43,12 @@ crates/core/          解析、生成、导出；不依赖 Tauri，可独立测�
   src/parser.rs       DDL → 表结构
   src/resolve.rs      表结构 → 已解析表（类型、命名、import、主键）
   src/validate.rs     语义校验：module path、标识符、命名冲突、主键
-  src/render.rs       模型 / 仓储 / 服务 / 缓存渲染器
-    render/contract.rs  三层共用的方法契约
+  src/render.rs                 `table`：一张表产出哪些文件、警告与依赖
+    src/render/model.rs         模型
+    src/render/repository.rs    仓储
+    src/render/service.rs       服务
+    src/render/cache.rs         缓存装饰器
+    src/render/contract.rs      三层共用的方法契约
   src/generate.rs     串起解析 → 解析表 → 渲染 → 生成产物
   src/types.rs        列类型映射
   src/naming.rs       标识符与命名规则
