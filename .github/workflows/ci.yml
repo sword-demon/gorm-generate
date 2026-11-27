@@ -17,7 +17,7 @@ env:
 
 jobs:
   frontend:
-    name: frontend (typecheck + tests)
+    name: frontend (typecheck + tests + e2e)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -33,6 +33,11 @@ jobs:
       # Typecheck alone misses what only the bundler sees: unresolvable
       # imports in .vue templates, missing assets, plugin config drift.
       - run: npx vite build
+
+      # Browser E2E: the real app in Chromium with the Tauri IPC stubbed
+      # (e2e/app.spec.ts). The dev server is started by Playwright itself.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
 
   core:
     name: core (unit + regressions + go build matrix)

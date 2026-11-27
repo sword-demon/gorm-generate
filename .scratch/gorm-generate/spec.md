@@ -72,7 +72,7 @@ Go 开发者拿到建表语句后，需要手写模型、仓储、服务接口�
 - **好测试的定义**: 只测外部行为——给定 DDL 与选项，断言完整生成产物；不断言字符串拼接细节。已解析表（`resolve` 的输出）是 module interface，允许直接单测。
 - **主 seam**: Rust `generate` 的 golden-file 测试。MySQL 与 PostgreSQL 各一份基线 DDL，另加针对性矩阵：类型映射、可空指针、注释（含 `COMMENT ON`）、复合主键、无主键、软删除、缓存开关、`tinyint(1)` 开关、警告列表、幂等（连续两次生成结果一致）。
 - **次 seam**: `export_project` 用临时目录验证目录结构、文件内容与同名覆盖行为。
-- **前端 seam**: 四个 composable（设置持久化、生成、导出、复制）各有单测，`App.vue` 另有挂载测试覆盖模板接线（`v-model`、按钮禁用态、表勾选、toast 与内联错误）；两个 Shiki 编辑器在挂载测试里用 stub 替换。Tauri IPC 本身不测（命令是薄包装）。
+- **前端 seam**: 四个 composable（设置持久化、生成、导出、复制）各有单测，`App.vue` 另有挂载测试覆盖模板接线（`v-model`、按钮禁用态、表勾选、toast 与内联错误）；两个 Shiki 编辑器在挂载测试里用 stub 替换。浏览器 E2E（`e2e/app.spec.ts`，Playwright + Chromium）在真实页面里跑同一批 composable 与模板，只把 `window.__TAURI_INTERNALS__.invoke` 打桩；覆盖启动、生成与表过滤、设置跨刷新、方言不匹配提示。Tauri IPC 本身不测（命令是薄包装）。
 - **仍靠手动冒烟**: 导出写盘链路（原生选择器 → 写盘 → 冲突确认）与打包产物，发布前手动走一遍。
 - **先例**: 无，全新仓库。
 

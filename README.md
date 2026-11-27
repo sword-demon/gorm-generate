@@ -24,7 +24,7 @@
 - 方言必须与脚本一致：MySQL 写的反引号与 `AUTO_INCREMENT` 在 PostgreSQL 方言下不生效（后者会被忽略并给警告）。
 - 解析错误定位到语句序号并附出错片段；module path、标识符等语义校验错误不归属具体语句。
 - 不生成 DTO、事务模板、关联预加载与自定义模板。
-- 界面逻辑有挂载测试（`src/App.test.ts`），导出写盘链路已通过真实 macOS `.app` 手动冒烟，但还没有自动化 E2E。
+- 界面有挂载测试（`src/App.test.ts`）与浏览器 E2E（`e2e/app.spec.ts`，Tauri IPC 打桩；导出写盘链路不在其中）；导出写盘链路已通过真实 macOS `.app` 手动冒烟，仍靠人工验证。
 
 ## 技术栈
 
@@ -55,6 +55,7 @@ src/                  Vue 界面
   components/         SqlEditor、CodePreview
   composables/        设置持久化、生成、导出、复制的独立状态模块
   lib/                IPC 线格式与设置加载的纯函数
+e2e/                  Playwright 浏览器 E2E（Tauri IPC 打桩）
 ```
 
 ## 环境要求
@@ -86,10 +87,11 @@ npm run tauri dev
 | `npm run typecheck` | 前端类型检查 |
 | `npx vite build` | 前端打包（CI 也跑，用来抓打包期错误） |
 | `npm test` | 前端单测：IPC 错误收窄、设置加载、四个 composable（设置持久化、生成、导出、复制），以及 App.vue 的模板接线（挂载测试） |
+| `npm run test:e2e` | 浏览器 E2E（Playwright + Chromium，首次先跑 `npx playwright install chromium`）：示例脚本启动、生成与表过滤、设置跨刷新持久化、方言不匹配提示；Tauri IPC 在浏览器里打桩，真实 composable 与模板照常运行 |
 
 `compile` 第一次运行会在临时项目里执行 `go mod tidy` 拉取 gorm 与 go-redis，因此需要能访问 module proxy。
 
-CI 见 [.github/workflows/ci.yml](.github/workflows/ci.yml)，push 到 `main` 与 PR 时跑三个 job：`frontend`（typecheck + 单测 + 打包）、`core`（clippy + 全部 core 测试）、`tauri`（安装 webkit 依赖后跑 Tauri 单测与 clippy）。仓库托管在 [github.com/sword-demon/gorm-generate](https://github.com/sword-demon/gorm-generate)（public）。发布 workflow 见 [.github/workflows/release.yml](.github/workflows/release.yml)（tag 触发，见下面的「发布」）。
+CI 见 [.github/workflows/ci.yml](.github/workflows/ci.yml)，push 到 `main` 与 PR 时跑三个 job：`frontend`（typecheck + 单测 + 打包 + 浏览器 E2E）、`core`（fmt + clippy + 全部 core 测试）、`tauri`（安装 webkit 依赖后跑 Tauri 单测与 clippy）。仓库托管在 [github.com/sword-demon/gorm-generate](https://github.com/sword-demon/gorm-generate)（public）。发布 workflow 见 [.github/workflows/release.yml](.github/workflows/release.yml)（tag 触发，见下面的「发布」）。
 
 ## 打包
 

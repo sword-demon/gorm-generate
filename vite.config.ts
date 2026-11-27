@@ -2,7 +2,7 @@ import { fileURLToPath, URL } from "node:url"
 
 import tailwindcss from "@tailwindcss/vite"
 import vue from "@vitejs/plugin-vue"
-import { defineConfig } from "vite"
+import { configDefaults, defineConfig } from "vitest/config"
 
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
@@ -17,5 +17,10 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     watch: { ignored: ["**/src-tauri/**"] },
+  },
+  test: {
+    // e2e/ holds Playwright specs; collecting them would call Playwright's
+    // test() inside Vitest and fail the run.
+    exclude: [...configDefaults.exclude, "e2e/**"],
   },
 })
