@@ -10,8 +10,12 @@ judges the change against the repository's own standards.
    repository. The workflow authenticates as that App through
    `id-token: write`; comments written with `GITHUB_TOKEN` would not trigger
    later runs.
-2. Add the repository secret `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`
-   and swap the input in the workflow).
+2. Run `claude setup-token` locally and add the printed token as the
+   repository secret `CLAUDE_CODE_OAUTH_TOKEN`. This authenticates with a
+   Claude subscription — no API key needed — and each run draws on the plan's
+   usage limits. For API-key auth instead, add `ANTHROPIC_API_KEY` and swap
+   the input line and the guard's secret name in the workflow.
+3. Until a credential exists the job skips with a notice instead of failing.
 3. On a public repository GitHub withholds secrets from fork pull requests, so
    the run only fires for branches in this repository. Fork PRs are reviewed
    by a human.
