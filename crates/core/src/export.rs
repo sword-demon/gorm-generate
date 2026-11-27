@@ -64,18 +64,29 @@ struct WritePlan<'a> {
 /// target.
 fn plan_export<'a>(dir: &Path, files: &'a [GeneratedFile]) -> Result<WritePlan<'a>, ExportError> {
     if !dir.is_absolute() {
-        return Err(ExportError::UnsafePath { path: dir.display().to_string() });
+        return Err(ExportError::UnsafePath {
+            path: dir.display().to_string(),
+        });
     }
     let mut seen = std::collections::HashSet::new();
     let mut writes = Vec::with_capacity(files.len());
     for file in files {
         let target = safe_join(dir, &file.path)?;
         if !seen.insert(target.clone()) {
-            return Err(ExportError::DuplicatePath { path: file.path.clone() });
+            return Err(ExportError::DuplicatePath {
+                path: file.path.clone(),
+            });
         }
-        writes.push(PlannedWrite { path: &file.path, target, content: &file.content });
+        writes.push(PlannedWrite {
+            path: &file.path,
+            target,
+            content: &file.content,
+        });
     }
-    Ok(WritePlan { root: dir.to_path_buf(), writes })
+    Ok(WritePlan {
+        root: dir.to_path_buf(),
+        writes,
+    })
 }
 
 /// Carries out a plan. The chosen root may itself be an OS alias; only
@@ -83,18 +94,28 @@ fn plan_export<'a>(dir: &Path, files: &'a [GeneratedFile]) -> Result<WritePlan<'
 /// concurrent path replacement.
 fn write_plan(plan: &WritePlan, overwrite: bool) -> Result<(), ExportError> {
     let root = &plan.root;
-    for write in &plan.writes { reject_links(root, &write.target)?; }
+    for write in &plan.writes {
+        reject_links(root, &write.target)?;
+    }
     if !overwrite {
-        let conflicts: Vec<String> = plan.writes.iter()
-            .filter(|write| write.target.exists()).map(|write| write.path.to_string()).collect();
-        if !conflicts.is_empty() { return Err(ExportError::Conflicts { paths: conflicts }); }
+        let conflicts: Vec<String> = plan
+            .writes
+            .iter()
+            .filter(|write| write.target.exists())
+            .map(|write| write.path.to_string())
+            .collect();
+        if !conflicts.is_empty() {
+            return Err(ExportError::Conflicts { paths: conflicts });
+        }
     }
     // Stage every file first. A failed write leaves all original files intact.
     // Persistence is atomic per file; the batch is not a filesystem transaction.
     let mut staged = Vec::new();
     for write in &plan.writes {
         let path = &write.target;
-        let parent = path.parent().ok_or_else(|| ExportError::UnsafePath { path: path.display().to_string() })?;
+        let parent = path.parent().ok_or_else(|| ExportError::UnsafePath {
+            path: path.display().to_string(),
+        })?;
         std::fs::create_dir_all(parent).map_err(|e| io_error(parent, e))?;
         reject_links(root, path)?;
         // `NamedTempFile` defaults to 0600; exported sources should honor the
@@ -108,7 +129,8 @@ fn write_plan(plan: &WritePlan, overwrite: bool) -> Result<(), ExportError> {
         }
         let mut temp = builder.tempfile_in(parent).map_err(|e| io_error(path, e))?;
         use std::io::Write;
-        temp.write_all(write.content.as_bytes()).map_err(|e| io_error(path, e))?;
+        temp.write_all(write.content.as_bytes())
+            .map_err(|e| io_error(path, e))?;
         temp.as_file().sync_all().map_err(|e| io_error(path, e))?;
         staged.push((temp, path));
     }
@@ -117,19 +139,26 @@ fn write_plan(plan: &WritePlan, overwrite: bool) -> Result<(), ExportError> {
         if overwrite {
             temp.persist(path).map_err(|e| io_error(path, e.error))?;
         } else {
-            temp.persist_noclobber(path).map_err(|e| io_error(path, e.error))?;
+            temp.persist_noclobber(path)
+                .map_err(|e| io_error(path, e.error))?;
         }
     }
     Ok(())
 }
 
 fn io_error(path: &Path, error: std::io::Error) -> ExportError {
-    ExportError::Io { message: format!("{}: {error}", path.display()) }
+    ExportError::Io {
+        message: format!("{}: {error}", path.display()),
+    }
 }
 
 fn reject_links(root: &Path, path: &Path) -> Result<(), ExportError> {
     let mut current = root.to_path_buf();
-    let relative = path.strip_prefix(root).map_err(|_| ExportError::UnsafePath { path: path.display().to_string() })?;
+    let relative = path
+        .strip_prefix(root)
+        .map_err(|_| ExportError::UnsafePath {
+            path: path.display().to_string(),
+        })?;
     for part in relative.components() {
         current.push(part);
         match std::fs::symlink_metadata(&current) {
@@ -137,8 +166,15 @@ fn reject_links(root: &Path, path: &Path) -> Result<(), ExportError> {
                 #[allow(unused_mut)]
                 let mut link = meta.file_type().is_symlink();
                 #[cfg(windows)]
-                { use std::os::windows::fs::MetadataExt; link |= meta.file_attributes() & 0x400 != 0; }
-                if link { return Err(ExportError::UnsafePath { path: current.display().to_string() }); }
+                {
+                    use std::os::windows::fs::MetadataExt;
+                    link |= meta.file_attributes() & 0x400 != 0;
+                }
+                if link {
+                    return Err(ExportError::UnsafePath {
+                        path: current.display().to_string(),
+                    });
+                }
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
             Err(e) => return Err(io_error(&current, e)),
@@ -152,12 +188,18 @@ fn reject_links(root: &Path, path: &Path) -> Result<(), ExportError> {
 fn safe_join(dir: &Path, relative: &str) -> Result<PathBuf, ExportError> {
     let rel = Path::new(relative);
     if relative.is_empty() || relative.contains('\\') || relative.contains(':') {
-        return Err(ExportError::UnsafePath { path: relative.to_string() });
+        return Err(ExportError::UnsafePath {
+            path: relative.to_string(),
+        });
     }
     for component in rel.components() {
         match component {
             Component::Normal(_) => {}
-            _ => return Err(ExportError::UnsafePath { path: relative.to_string() }),
+            _ => {
+                return Err(ExportError::UnsafePath {
+                    path: relative.to_string(),
+                })
+            }
         }
     }
     Ok(dir.join(rel))
@@ -196,10 +238,8 @@ mod tests {
 
     /// Fresh unique temp dir; caller removes it.
     fn temp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "gorm-generate-export-{tag}-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("gorm-generate-export-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir
     }
@@ -295,8 +335,14 @@ mod tests {
     #[test]
     fn rejects_duplicate_paths() {
         let dir = temp_dir("duplicate");
-        let err = plan_export(&dir, &[file("internal/model/user.go"), file("internal/model/user.go")])
-            .expect_err("duplicate rejected");
+        let err = plan_export(
+            &dir,
+            &[
+                file("internal/model/user.go"),
+                file("internal/model/user.go"),
+            ],
+        )
+        .expect_err("duplicate rejected");
         match err {
             ExportError::DuplicatePath { path } => {
                 assert_eq!(path, "internal/model/user.go");
